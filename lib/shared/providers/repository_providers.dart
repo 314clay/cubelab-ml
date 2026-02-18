@@ -9,9 +9,9 @@ import 'package:cubelab/data/repositories/profile_repository.dart';
 import 'package:cubelab/data/repositories/timer_repository.dart';
 import 'package:cubelab/data/repositories/user_repository.dart';
 
-import 'package:cubelab/data/stubs/stub_cube_scan_repository.dart';
 import 'package:cubelab/data/stubs/stub_profile_repository.dart';
 import 'package:cubelab/data/supabase/supabase_algorithm_repository.dart';
+import 'package:cubelab/data/supabase/supabase_cube_scan_repository.dart';
 import 'package:cubelab/data/supabase/supabase_cross_trainer_repository.dart';
 import 'package:cubelab/data/supabase/supabase_daily_challenge_repository.dart';
 import 'package:cubelab/data/supabase/supabase_leaderboard_repository.dart';
@@ -56,9 +56,9 @@ final timerRepositoryProvider = Provider<TimerRepository>((ref) {
 });
 
 /// Cube scan repository provider
-/// Uses stub for now, swap for Supabase later
+/// Uses Supabase for scan history persistence
 final cubeScanRepositoryProvider = Provider<CubeScanRepository>((ref) {
-  return StubCubeScanRepository();
+  return SupabaseCubeScanRepository(ref.watch(supabaseClientProvider));
 });
 
 /// Profile repository provider

@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,9 +9,11 @@ import 'package:cubelab/core/theme/app_text_styles.dart';
 import 'package:cubelab/core/theme/app_spacing.dart';
 import 'package:cubelab/core/utils/navigation_utils.dart';
 import 'package:cubelab/features/cube_scan/providers/cube_scan_providers.dart';
+import 'package:cubelab/features/cube_scan/widgets/camera_preview_widget.dart';
 import 'package:cubelab/features/cube_scan/widgets/phase_badge_widget.dart';
 import 'package:cubelab/features/cube_scan/widgets/solve_path_card.dart';
 import 'package:cubelab/features/cube_scan/widgets/srs_action_widget.dart';
+import 'package:cubelab/features/cube_scan/widgets/sticker_overlay_painter.dart';
 
 /// Main Cube Scan page. Single screen driven by CubeScanPhase state machine.
 class CubeScanPage extends ConsumerStatefulWidget {
@@ -21,6 +24,7 @@ class CubeScanPage extends ConsumerStatefulWidget {
 }
 
 class _CubeScanPageState extends ConsumerState<CubeScanPage> {
+  final _cameraKey = GlobalKey<CameraPreviewWidgetState>();
   int _expandedPathIndex = 0;
 
   @override
@@ -54,26 +58,38 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
   Widget _buildCameraPhase() {
     return Stack(
       children: [
-        // Dark background simulating camera preview
-        Container(color: const Color(0xFF0A0A0A)),
+        // Camera preview (real camera on mobile, dark bg on web)
+        if (kIsWeb)
+          Container(color: const Color(0xFF0A0A0A))
+        else
+          CameraPreviewWidget(
+            key: _cameraKey,
+            onCapture: (bytes) {
+              ref.read(cubeScanProvider.notifier).captureAndAnalyze(bytes);
+            },
+          ),
 
-        // Guide overlay area
-        Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.camera_enhance,
-                size: 120,
-                color: AppColors.primary.withValues(alpha: 0.3),
+        // Guide overlay
+        Positioned(
+          bottom: 140,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg,
+                vertical: AppSpacing.sm,
               ),
-              const SizedBox(height: AppSpacing.lg),
-              const Text(
-                'Hold cube showing top, front,\nand right faces',
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: AppSpacing.buttonRadius,
+              ),
+              child: const Text(
+                'Hold cube showing top, front, and right faces',
                 style: AppTextStyles.bodySecondary,
                 textAlign: TextAlign.center,
               ),
-            ],
+            ),
           ),
         ),
 
@@ -103,7 +119,7 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
           right: 0,
           child: Center(
             child: GestureDetector(
-              onTap: _simulateScan,
+              onTap: _capturePhoto,
               child: Container(
                 width: 72,
                 height: 72,
@@ -130,7 +146,7 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
           right: 0,
           child: Center(
             child: Text(
-              'Simulate Scan',
+              kIsWeb ? 'Simulate Scan' : 'Capture',
               style: AppTextStyles.caption.copyWith(color: AppColors.textSecondary),
             ),
           ),
@@ -139,11 +155,14 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
     );
   }
 
-  void _simulateScan() {
+  void _capturePhoto() {
     HapticFeedback.mediumImpact();
-    // Send dummy bytes since we're using the stub service
-    final dummyBytes = Uint8List(0);
-    ref.read(cubeScanProvider.notifier).captureAndAnalyze(dummyBytes);
+    if (kIsWeb) {
+      // Stub: send dummy bytes on web where camera is not available
+      ref.read(cubeScanProvider.notifier).captureAndAnalyze(Uint8List(0));
+    } else {
+      _cameraKey.currentState?.capture();
+    }
   }
 
   // ============ Processing Phase ============
@@ -226,6 +245,10 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Sticker overlay visualization
+            _buildStickerOverlay(result),
+            const SizedBox(height: AppSpacing.lg),
+
             // Phase badge
             PhaseBadgeWidget(phase: result.phase),
             const SizedBox(height: AppSpacing.lg),
@@ -272,11 +295,33 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
               // SRS action
               SrsActionWidget(
                 caseName: result.caseName,
+                isKnownAlgorithm: state.isKnownAlgorithm,
                 onAddToQueue: () {
-                  ref.read(cubeScanProvider.notifier).completeSrsAction();
+                  ref.read(cubeScanProvider.notifier).addToQueue();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '${result.caseName ?? 'Case'} added to practice queue',
+                      ),
+                      backgroundColor: AppColors.primary,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
                 },
                 onSkip: () {
                   ref.read(cubeScanProvider.notifier).completeSrsAction();
+                },
+                onRate: (rating) {
+                  ref.read(cubeScanProvider.notifier).rateReview(rating);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '${result.caseName ?? 'Case'} reviewed',
+                      ),
+                      backgroundColor: AppColors.primary,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
                 },
               ),
             ],
@@ -325,6 +370,27 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildStickerOverlay(result) {
+    final visible27 = result.visible27 as List<String>;
+    if (visible27.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      height: 180,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: AppSpacing.cardRadius,
+        border: Border.all(color: AppColors.border),
+      ),
+      child: CustomPaint(
+        size: const Size(double.infinity, 180),
+        painter: StickerOverlayPainter(
+          visible27: visible27,
+          phase: result.phase as String,
+        ),
+      ),
     );
   }
 

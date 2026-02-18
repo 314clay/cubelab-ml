@@ -397,6 +397,30 @@ DROP POLICY IF EXISTS "Users can manage their own settings" ON public.user_setti
 CREATE POLICY "Users can manage their own settings" ON public.user_settings FOR ALL USING (auth.uid() = user_id);
 
 -- ============================================================================
+-- CUBE SCAN TABLES
+-- ============================================================================
+
+-- Cube scan encounter history
+CREATE TABLE IF NOT EXISTS public.cube_scan_encounters (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  algorithm_id TEXT,                 -- matched algorithm from catalog
+  phase TEXT NOT NULL,               -- 'oll', 'pll', 'solved', etc.
+  case_name TEXT,                    -- e.g. 'OLL 27', 'T-Perm'
+  confidence DECIMAL(4,3) NOT NULL,  -- 0.000 to 1.000
+  srs_rating TEXT,                   -- 'again', 'hard', 'good', 'easy' if reviewed
+  added_to_queue BOOLEAN DEFAULT false,
+  scanned_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_cube_scan_user ON public.cube_scan_encounters(user_id, scanned_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cube_scan_alg ON public.cube_scan_encounters(user_id, algorithm_id);
+ALTER TABLE public.cube_scan_encounters ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage their own scan encounters" ON public.cube_scan_encounters;
+CREATE POLICY "Users can manage their own scan encounters" ON public.cube_scan_encounters FOR ALL USING (auth.uid() = user_id);
+
+-- ============================================================================
 -- HELPER FUNCTIONS
 -- ============================================================================
 
