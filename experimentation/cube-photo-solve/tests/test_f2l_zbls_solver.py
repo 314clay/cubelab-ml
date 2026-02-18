@@ -1,10 +1,10 @@
-"""Tests for F2L and ZBLS solving paths via solve_from_cube()."""
+"""Tests for F2L, ZBLS, and ELL solving paths via solve_from_cube()."""
 
 import pytest
 from state_resolver import Cube
 from solver import CubeSolver
 from phase_detector import PhaseDetector
-from algorithms import F2L_CASES, ZBLS_CASES
+from algorithms import F2L_CASES, ZBLS_CASES, ELL_CASES
 
 
 @pytest.fixture(scope="module")
@@ -248,3 +248,119 @@ class TestSolutionTree:
         c = Cube()
         paths = solver.solve_from_cube(c)
         assert paths == []
+
+    def test_ll_delegation_for_ell_state(self, solver):
+        """ELL state should find ELL solutions."""
+        c = Cube()
+        c.apply_algorithm(ELL_CASES["ELL 8"])
+        paths = solver.solve_from_cube(c, max_paths=5)
+        assert len(paths) > 0
+        assert any(s.algorithm_set == "ELL" for p in paths for s in p.steps)
+
+
+# ---- Cube corner inspection ----
+
+class TestCubeCornerInspection:
+    def test_solved_cube_corners_solved(self):
+        c = Cube()
+        assert c.is_ll_corners_solved()
+
+    def test_ell_state_corners_solved(self):
+        """ELL algs only move edges — corners should remain solved."""
+        for name in ["ELL 1", "ELL 8", "ELL 22"]:
+            alg = ELL_CASES.get(name)
+            if not alg:
+                continue
+            c = Cube()
+            c.apply_algorithm(alg)
+            assert c.is_ll_corners_solved(), f"{name} should leave corners solved"
+            assert not c.is_solved(), f"{name} should not leave cube solved"
+
+    def test_oll_state_corners_not_solved(self):
+        """OLL scramble disrupts corners."""
+        c = Cube()
+        c.apply_algorithm("F R U R' U' F'")  # OLL 45
+        assert not c.is_ll_corners_solved()
+
+    def test_pll_state_corners_may_be_unsolved(self):
+        """T-Perm disrupts corner permutation."""
+        c = Cube()
+        c.apply_algorithm("R U R' U' R' F R2 U' R' U' R U R' F'")  # T-Perm
+        assert not c.is_ll_corners_solved()
+
+
+# ---- ELL phase detection ----
+
+class TestELLPhaseDetection:
+    def test_ell_phase_detected(self, detector):
+        """ELL state should be detected as ell phase."""
+        c = Cube()
+        c.apply_algorithm(ELL_CASES["ELL 8"])
+        r = detector.detect_phase_full(c)
+        assert r.phase == "ell"
+        assert "ELL" in r.applicable_sets
+
+    def test_epll_detected_as_pll_with_ell(self, detector):
+        """EPLL cases (ELL 4-7) have top oriented → pll phase, but ELL applicable."""
+        c = Cube()
+        c.apply_algorithm(ELL_CASES["ELL 4"])  # U-PLL a
+        r = detector.detect_phase_full(c)
+        assert r.phase == "pll"
+        assert "ELL" in r.applicable_sets
+
+    def test_ell_not_detected_for_oll(self, detector):
+        """OLL state should NOT be detected as ell."""
+        c = Cube()
+        c.apply_algorithm("F R U R' U' F'")
+        r = detector.detect_phase_full(c)
+        assert r.phase == "oll"
+
+
+# ---- ELL solving ----
+
+class TestELLSolving:
+    @pytest.mark.parametrize("case_name", [
+        "ELL 1", "ELL 4", "ELL 8", "ELL 14", "ELL 22", "ELL 28",
+    ])
+    def test_ell_round_trip(self, solver, case_name):
+        """Apply ELL alg, solver should find a path back to solved."""
+        alg = ELL_CASES.get(case_name)
+        if not alg:
+            pytest.skip(f"{case_name} not found")
+        c = Cube()
+        c.apply_algorithm(alg)
+        paths = solver.solve_from_cube(c, max_paths=5)
+        assert len(paths) > 0, f"No paths found for {case_name}"
+        for p in paths:
+            v = c.copy()
+            for s in p.steps:
+                v.apply_algorithm(s.algorithm)
+            assert v.is_solved(), f"Path '{p.description}' for {case_name} didn't solve"
+
+    def test_ell_finds_ell_labeled_path(self, solver):
+        """ELL solutions should include ELL-labeled steps."""
+        c = Cube()
+        c.apply_algorithm(ELL_CASES["ELL 1"])
+        paths = solver.solve_from_cube(c, max_paths=5)
+        ell_paths = [p for p in paths if any(s.algorithm_set == "ELL" for s in p.steps)]
+        assert len(ell_paths) > 0, "Should find ELL-labeled paths"
+
+    def test_ell_via_15_sticker_solve(self, solver):
+        """ELL should also be found via 15-sticker solve()."""
+        c = Cube()
+        c.apply_algorithm(ELL_CASES["ELL 8"])
+        visible = c.get_visible_stickers()
+        paths = solver.solve(visible, max_paths=5)
+        assert len(paths) > 0
+        for p in paths:
+            v = c.copy()
+            for s in p.steps:
+                v.apply_algorithm(s.algorithm)
+            assert v.is_solved()
+
+    def test_all_ell_cases_executable(self):
+        """Every ELL algorithm should execute without error."""
+        for name, alg in ELL_CASES.items():
+            c = Cube()
+            c.apply_algorithm(alg)
+            assert c.is_f2l_solved(), f"{name} should not break F2L"

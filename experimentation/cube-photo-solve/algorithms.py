@@ -130,6 +130,7 @@ OLLCP_CASES = _get_cases_dict("OLLCP")
 F2L_CASES = _get_cases_dict("F2L")
 WV_CASES = _get_cases_dict("WV")
 ZBLS_CASES = _get_cases_dict("ZBLS")
+ELL_CASES = _get_cases_dict("ELL")
 
 
 def parse_algorithm(alg_string):
@@ -152,6 +153,7 @@ def get_all_algorithm_sets():
         "F2L": F2L_CASES.copy(),
         "WV": WV_CASES.copy(),
         "ZBLS": ZBLS_CASES.copy(),
+        "ELL": ELL_CASES.copy(),
     }
 
 

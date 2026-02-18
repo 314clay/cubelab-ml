@@ -90,9 +90,24 @@ class CubeSolver:
             self._find_two_step_solutions(
                 visible_stickers, "OLLCP", phase_result.phase, paths
             )
-            # Strategy 3: Combined OLL+PLL lookup (for combined scrambles)
+            # Strategy 3: ELL direct (15-sticker can't distinguish ELL from OLL)
+            self._find_direct_solutions(
+                visible_stickers, "ELL", phase_result.phase, paths
+            )
+            # Strategy 4: Combined OLL+PLL lookup (for combined scrambles)
             self._find_combined_oll_pll_solutions(
                 visible_stickers, phase_result.phase, paths
+            )
+
+        # For ELL phase: corners solved, only edges remain
+        if phase_result.phase == "ell":
+            # Strategy 1: ELL direct solve
+            self._find_direct_solutions(
+                visible_stickers, "ELL", phase_result.phase, paths
+            )
+            # Strategy 2: PLL can also solve edges-only states
+            self._find_direct_solutions(
+                visible_stickers, "PLL", phase_result.phase, paths
             )
 
         # For edges-oriented phase: try COLL, ZBLL, OLL, and combined OLL_PLL
@@ -101,15 +116,24 @@ class CubeSolver:
             self._find_direct_solutions(
                 visible_stickers, "ZBLL", phase_result.phase, paths
             )
-            # Strategy 2: COLL → PLL chain
+            # Strategy 2: ELL direct (edges-oriented ELL = EPLL subset)
+            self._find_direct_solutions(
+                visible_stickers, "ELL", phase_result.phase, paths
+            )
+            # Strategy 3: COLL → ELL chain
+            self._find_two_step_solutions(
+                visible_stickers, "COLL", phase_result.phase, paths,
+                second_set="ELL"
+            )
+            # Strategy 4: COLL → PLL chain
             self._find_two_step_solutions(
                 visible_stickers, "COLL", phase_result.phase, paths
             )
-            # Strategy 3: OLL → PLL chain (OLL works on edges-oriented too)
+            # Strategy 5: OLL → PLL chain (OLL works on edges-oriented too)
             self._find_two_step_solutions(
                 visible_stickers, "OLL", phase_result.phase, paths
             )
-            # Strategy 4: Combined OLL+PLL lookup
+            # Strategy 6: Combined OLL+PLL lookup
             self._find_combined_oll_pll_solutions(
                 visible_stickers, phase_result.phase, paths
             )
@@ -229,8 +253,9 @@ class CubeSolver:
 
     def _find_two_step_solutions(self, visible_stickers: List[str],
                                    first_set: str, phase_before: str,
-                                   paths: List[SolvePath]):
-        """Find two-step solutions: first_set → PLL."""
+                                   paths: List[SolvePath],
+                                   second_set: str = "PLL"):
+        """Find two-step solutions: first_set → second_set (default PLL)."""
         matches = self.resolver.lookup(visible_stickers, set_name=first_set)
         for match in matches:
             scramble_alg = match['algorithm']
@@ -239,7 +264,7 @@ class CubeSolver:
             solve_alg_1 = inverse_algorithm(scramble_alg)
             move_count_1 = len(parse_algorithm(solve_alg_1))
 
-            # Reconstruct the state and apply the inverse to get PLL state
+            # Reconstruct the state and apply the inverse
             cube = Cube()
             cube.apply_algorithm(scramble_alg)
             cube.apply_algorithm(solve_alg_1)
@@ -248,7 +273,7 @@ class CubeSolver:
             result_phase = self.phase_detector.detect_phase_full(cube)
 
             if result_phase.phase == "solved":
-                # No PLL needed — first step solved everything
+                # No second step needed — first step solved everything
                 paths.append(SolvePath(
                     steps=[SolveStep(
                         algorithm_set=first_set,
@@ -259,15 +284,15 @@ class CubeSolver:
                         phase_after="solved",
                     )],
                     total_moves=move_count_1,
-                    description=f"{match['case']} → PLL Skip",
+                    description=f"{match['case']} → {second_set} Skip",
                 ))
-            elif result_phase.phase == "pll":
-                # Need PLL step — look up
+            elif result_phase.phase in ("pll", "ell") or second_set in result_phase.applicable_sets:
+                # Need second step — look up
                 result_visible = cube.get_visible_stickers()
-                pll_matches = self.resolver.lookup(result_visible, set_name="PLL")
-                for pll_match in pll_matches:
-                    pll_scramble = pll_match['algorithm']
-                    if not pll_scramble:
+                second_matches = self.resolver.lookup(result_visible, set_name=second_set)
+                for second_match in second_matches:
+                    second_scramble = second_match['algorithm']
+                    if not second_scramble:
                         # Already solved
                         paths.append(SolvePath(
                             steps=[SolveStep(
@@ -279,20 +304,21 @@ class CubeSolver:
                                 phase_after="solved",
                             )],
                             total_moves=move_count_1,
-                            description=f"{match['case']} → PLL Skip",
+                            description=f"{match['case']} → {second_set} Skip",
                         ))
                         continue
 
-                    pll_solve = inverse_algorithm(pll_scramble)
-                    move_count_2 = len(parse_algorithm(pll_solve))
+                    second_solve = inverse_algorithm(second_scramble)
+                    move_count_2 = len(parse_algorithm(second_solve))
 
                     # Verify the full chain solves the cube
                     verify_cube = Cube()
                     verify_cube.apply_algorithm(scramble_alg)
                     verify_cube.apply_algorithm(solve_alg_1)
-                    verify_cube.apply_algorithm(pll_solve)
+                    verify_cube.apply_algorithm(second_solve)
 
                     if all(len(set(f)) == 1 for f in verify_cube.faces.values()):
+                        second_phase = "ell" if second_set == "ELL" else "pll"
                         paths.append(SolvePath(
                             steps=[
                                 SolveStep(
@@ -301,19 +327,19 @@ class CubeSolver:
                                     algorithm=solve_alg_1,
                                     move_count=move_count_1,
                                     phase_before=phase_before,
-                                    phase_after="pll",
+                                    phase_after=second_phase,
                                 ),
                                 SolveStep(
-                                    algorithm_set="PLL",
-                                    case_name=pll_match['case'],
-                                    algorithm=pll_solve,
+                                    algorithm_set=second_set,
+                                    case_name=second_match['case'],
+                                    algorithm=second_solve,
                                     move_count=move_count_2,
-                                    phase_before="pll",
+                                    phase_before=second_phase,
                                     phase_after="solved",
                                 ),
                             ],
                             total_moves=move_count_1 + move_count_2,
-                            description=f"{match['case']} → {pll_match['case']}",
+                            description=f"{match['case']} → {second_match['case']}",
                         ))
 
     def verify_path(self, visible_stickers: List[str], path: SolvePath) -> bool:
@@ -376,7 +402,7 @@ class CubeSolver:
             # Try ZBLS → LL chains
             self._find_zbls_solutions(cube, paths)
 
-        elif phase_result.phase in ("pll", "oll", "oll_edges_oriented"):
+        elif phase_result.phase in ("pll", "oll", "oll_edges_oriented", "ell"):
             # Delegate to existing 15-sticker solver for LL phases
             visible = cube.get_visible_stickers()
             return self.solve(visible, max_paths=max_paths)

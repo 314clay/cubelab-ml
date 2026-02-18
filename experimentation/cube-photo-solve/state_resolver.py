@@ -144,6 +144,33 @@ class Cube:
         uc = self.faces['U'][4]
         return all(self.faces['U'][i] == uc for i in (1, 3, 5, 7))
 
+    def is_ll_corners_solved(self) -> bool:
+        """Check if LL corners are fully solved (oriented + permuted).
+
+        Checks:
+        - U face corners match U center
+        - Side face corner stickers match their respective face centers
+        """
+        uc = self.faces['U'][4]
+        # U-face corner positions must match U center
+        if not all(self.faces['U'][i] == uc for i in (0, 2, 6, 8)):
+            return False
+        # Side face corner stickers must match their face centers
+        # ULB corner: L[0] must match L center, B[2] must match B center
+        # URB corner: R[2] must match R center, B[0] must match B center
+        # ULF corner: L[2] must match L center, F[0] must match F center
+        # URF corner: R[0] must match R center, F[2] must match F center
+        return (
+            self.faces['F'][0] == self.faces['F'][4] and
+            self.faces['F'][2] == self.faces['F'][4] and
+            self.faces['R'][0] == self.faces['R'][4] and
+            self.faces['R'][2] == self.faces['R'][4] and
+            self.faces['B'][0] == self.faces['B'][4] and
+            self.faces['B'][2] == self.faces['B'][4] and
+            self.faces['L'][0] == self.faces['L'][4] and
+            self.faces['L'][2] == self.faces['L'][4]
+        )
+
     def apply_move(self, move: str):
         """
         Apply a single move to the cube.
@@ -602,7 +629,7 @@ class ExpandedStateResolver:
     Each table maps visible sticker keys to match info.
     """
 
-    DEFAULT_SETS = ['OLL', 'PLL', 'COLL', 'ZBLL', 'OLLCP']
+    DEFAULT_SETS = ['OLL', 'PLL', 'COLL', 'ZBLL', 'OLLCP', 'ELL']
     AUF_ROTATIONS = ['', 'y', 'y2', "y'"]
 
     def __init__(self, sets=None, use_all_orientations=False):

@@ -2,11 +2,12 @@
   "metadata": {
     "source": "spencerchubb/cubingapp",
     "fetched_at": "2026-02-18T06:10:03.441918+00:00",
-    "total_algorithms": 1041,
+    "total_algorithms": 1070,
     "sources": [
       "spencerchubb/cubingapp",
       "tao-yu/Alg-Trainer (MIT license)",
-      "Chad Batten ZBLS spreadsheet"
+      "Chad Batten ZBLS spreadsheet",
+      "Speedsolving.com wiki (ELL)"
     ]
   },
   "algorithm_sets": {
@@ -4901,6 +4902,242 @@
             "R U R' U' R U' R' U2 F' U' F"
           ],
           "subset": "F2L 41"
+        }
+      }
+    },
+    "ELL": {
+      "phase": "edges_last_layer",
+      "precondition": "F2L solved, LL corners solved (oriented + permuted)",
+      "postcondition": "Cube solved",
+      "source": "Speedsolving.com wiki + tao-yu/Alg-Trainer cross-reference",
+      "count": 29,
+      "cases": {
+        "ELL 1": {
+          "algorithm": "r U R' U' r' U2 R U R U' R2 U2 R",
+          "subset": "Pure Flips",
+          "name": "Adjacent 2-flip",
+          "alternatives": [
+            "R' U2 R2 U R' U' R' U2 r U R U' r'",
+            "M U M' U2 M U M U M U2 M' U M2"
+          ]
+        },
+        "ELL 2": {
+          "algorithm": "M' U' M' U' M' U2 M U' M U' M U2",
+          "subset": "Pure Flips",
+          "name": "Opposite 2-flip",
+          "alternatives": [
+            "U M' U M' U M' U M2 U M' U M' U M' U",
+            "M' U M' U M' U M' U2 M' U M' U M' U M'",
+            "F2 M' F2 M2 U' M2 F2 M F2 U"
+          ]
+        },
+        "ELL 3": {
+          "algorithm": "M' U2 M U2 M' U' M U2 M' U2 M U",
+          "subset": "Pure Flips",
+          "name": "4-flip (Pure Checkers)",
+          "alternatives": [
+            "U B2 M' B2 M2 U' F2 M F2 M2",
+            "F2 M F2 M2 U' M2 F2 M' F2 U"
+          ]
+        },
+        "ELL 4": {
+          "algorithm": "M2 U' M U2 M' U' M2",
+          "subset": "EPLL",
+          "name": "U-PLL a",
+          "alternatives": [
+            "F2 U M' U2 M U F2",
+            "L' U L' U' L' U' L' U L U L2"
+          ]
+        },
+        "ELL 5": {
+          "algorithm": "M2 U M U2 M' U M2",
+          "subset": "EPLL",
+          "name": "U-PLL b",
+          "alternatives": [
+            "F2 U' M' U2 M U' F2",
+            "R U' R U R U R U' R' U' R2"
+          ]
+        },
+        "ELL 6": {
+          "algorithm": "M2 U M2 U M' U2 M2 U2 M' U2",
+          "subset": "EPLL",
+          "name": "Z-PLL",
+          "alternatives": [
+            "M2 U' M2 U' M2 U2 M2 U2 M2 U",
+            "L F U' R U R' F' L' F U R U' R' F'"
+          ]
+        },
+        "ELL 7": {
+          "algorithm": "M2 U' M2 U2 M2 U' M2",
+          "subset": "EPLL",
+          "name": "H-PLL",
+          "alternatives": [
+            "R L U2 R' L' y R' L' U2 R L",
+            "R2 U2 R U2 R2 U2 R2 U2 R U2 R2"
+          ]
+        },
+        "ELL 8": {
+          "algorithm": "M U M' U2 M U M'",
+          "subset": "B Edge Solved",
+          "name": "LF-flip U-PLL b",
+          "alternatives": [
+            "R' F' R2 u2 R2 F' R2 u2 R'"
+          ]
+        },
+        "ELL 9": {
+          "algorithm": "M U' M' U2 M U' M'",
+          "subset": "B Edge Solved",
+          "name": "RF-flip U-PLL a"
+        },
+        "ELL 10": {
+          "algorithm": "R' F R S R' F' R S'",
+          "subset": "B Edge Solved",
+          "name": "RL-flip U-PLL a",
+          "alternatives": [
+            "R' F R F' f R' F' R S'"
+          ]
+        },
+        "ELL 11": {
+          "algorithm": "r U R' U' M U R U' R'",
+          "subset": "B Edge Solved",
+          "name": "RL-flip U-PLL b"
+        },
+        "ELL 12": {
+          "algorithm": "R U R' U' M' U R U' r'",
+          "subset": "B Edge Solved",
+          "name": "LF-flip U-PLL a"
+        },
+        "ELL 13": {
+          "algorithm": "R' U' R U M U' R' U r",
+          "subset": "B Edge Solved",
+          "name": "RF-flip U-PLL b"
+        },
+        "ELL 14": {
+          "algorithm": "M' U M U M' U2 M' U M' U M U M' U M'",
+          "subset": "B Edge Flipped",
+          "name": "4-flip U-PLL a",
+          "alternatives": [
+            "f R U R' U' f' R' U' R' F R F' U R"
+          ]
+        },
+        "ELL 15": {
+          "algorithm": "M' U' M U M' U M U M' U M U2 M' U' M",
+          "subset": "B Edge Flipped",
+          "name": "4-flip U-PLL b",
+          "alternatives": [
+            "f' L' U' L U f L U L F' L' F U' L'",
+            "L' U' B L' B' L U L F R U R' U' F'"
+          ]
+        },
+        "ELL 16": {
+          "algorithm": "M' U' M' U2 M' U M U' M' U2 M U M2",
+          "subset": "B Edge Flipped",
+          "name": "BF-flip U-PLL a",
+          "alternatives": [
+            "M' U' F2 M2 U' M U F2 U M2"
+          ]
+        },
+        "ELL 17": {
+          "algorithm": "M' U M' U2 M' U' M U M' U2 M U' M2",
+          "subset": "B Edge Flipped",
+          "name": "BF-flip U-PLL b",
+          "alternatives": [
+            "M' U F2 M2 U M U' F2 U' M2"
+          ]
+        },
+        "ELL 18": {
+          "algorithm": "M2 U M' U2 M U' M' U M U2 M U' M",
+          "subset": "B Edge Flipped",
+          "name": "BL-flip U-PLL a",
+          "alternatives": [
+            "M2 U F2 U M' U' M2 F2 U' M"
+          ]
+        },
+        "ELL 19": {
+          "algorithm": "M2 U' M' U2 M U M' U' M U2 M U M",
+          "subset": "B Edge Flipped",
+          "name": "BR-flip U-PLL b",
+          "alternatives": [
+            "M2 U' F2 U' M' U M2 F2 U M"
+          ]
+        },
+        "ELL 20": {
+          "algorithm": "M' U' M' U2 M U' M2 U' M' U",
+          "subset": "B Edge Flipped",
+          "name": "BR-flip U-PLL a",
+          "alternatives": [
+            "F R U R' U' F' L' U' B L' B' L U L"
+          ]
+        },
+        "ELL 21": {
+          "algorithm": "M' U M' U2 M U M2 U M' U'",
+          "subset": "B Edge Flipped",
+          "name": "BL-flip U-PLL b"
+        },
+        "ELL 22": {
+          "algorithm": "M U' M' U2 M U' M U' M' U2 M U' M2",
+          "subset": "No Edges In Position",
+          "name": "LF-flip Z-PLL",
+          "alternatives": [
+            "R' F' U' F U R U F R U R' U' F' U'"
+          ]
+        },
+        "ELL 23": {
+          "algorithm": "F R U R' U' F' R' U' R' F R F' U R",
+          "subset": "No Edges In Position",
+          "name": "LB-flip Z-PLL",
+          "alternatives": [
+            "M' U M U M' U2 M U' M' U' M",
+            "F R U R' U' F' R' U' R' F R F' U R"
+          ]
+        },
+        "ELL 24": {
+          "algorithm": "M' U M U' M' U M U M' U2 M",
+          "subset": "No Edges In Position",
+          "name": "FB-flip Z-PLL",
+          "alternatives": [
+            "B2 M U M' U M U' M' U' B2"
+          ]
+        },
+        "ELL 25": {
+          "algorithm": "M' U' M U M' U' M U' M' U2 M",
+          "subset": "No Edges In Position",
+          "name": "LR-flip Z-PLL"
+        },
+        "ELL 26": {
+          "algorithm": "F2 M F2 U' M2 U B2 M B2",
+          "subset": "No Edges In Position",
+          "name": "4-flip Z-PLL",
+          "alternatives": [
+            "M U' M' U2 M U' M2 U M U2 M' U M",
+            "r' U M2 U' r U2 r' U M2 U' r U2",
+            "R L B U2 L2 U2 L2 U2 L2 B' L' R'"
+          ]
+        },
+        "ELL 27": {
+          "algorithm": "M' U2 M' U2 M' U' M U2 M U2 M U",
+          "subset": "No Edges In Position",
+          "name": "4-flip H-PLL",
+          "alternatives": [
+            "r U R' U' M2 U R U' R' U' M'",
+            "M U R U R' U' M2 U R U' r'",
+            "F2 M' F2 M2 U' M2 F2 M F2 U"
+          ]
+        },
+        "ELL 28": {
+          "algorithm": "M' U' M U' M' U' M U' M' U' M U",
+          "subset": "No Edges In Position",
+          "name": "FR-flip H-PLL"
+        },
+        "ELL 29": {
+          "algorithm": "M' U M2 U2 M' U M' U2 M' U' M U' M",
+          "subset": "No Edges In Position",
+          "name": "FB-flip H-PLL",
+          "alternatives": [
+            "M' U M U2 M' U M' U2 M' U' M U' M",
+            "R' U2 R U' R' U' R' F R2 U R' U' R' F' R2",
+            "F M' F U M2 U2 M2 U F' M F'"
+          ]
         }
       }
     }

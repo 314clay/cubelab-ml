@@ -25,6 +25,7 @@ class PhaseDetector:
 
     SOLVED = "solved"
     PLL = "pll"
+    ELL = "ell"
     OLL_EDGES_ORIENTED = "oll_edges_oriented"
     OLL = "oll"
     F2L_LAST_PAIR = "f2l_last_pair"
@@ -159,6 +160,21 @@ class PhaseDetector:
 
         if cube.is_f2l_solved():
             # F2L done — determine LL phase
+            # Check if LL corners are fully solved (only edges remain → ELL)
+            if cube.is_ll_corners_solved():
+                uc = cube.faces['U'][4]
+                top_all_match = all(s == uc for s in cube.faces['U'])
+                if top_all_match:
+                    return PhaseResult(
+                        phase=self.PLL,
+                        applicable_sets=["PLL", "ELL"],
+                        confidence=1.0,
+                    )
+                return PhaseResult(
+                    phase=self.ELL,
+                    applicable_sets=["ELL"],
+                    confidence=1.0,
+                )
             if cube.is_ll_edges_oriented():
                 # Check if top face is fully oriented
                 uc = cube.faces['U'][4]
