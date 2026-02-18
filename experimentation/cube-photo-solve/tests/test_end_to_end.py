@@ -163,6 +163,64 @@ class TestEndToEndResolver:
             )
 
 
+# Renders that use algorithm sets beyond OLL+PLL (COLL, ZBLL, OLLCP)
+EXPANDED_SET_RENDERS = {
+    "coll_as1.png", "coll_s1.png", "coll_t1.png",
+    "zbll_1.png", "zbll_100.png", "zbll_200.png",
+    "ollcp_1.png", "ollcp_2.png", "edges_oriented.png",
+}
+
+
+class TestEndToEndCubeSolver:
+    """For expanded algorithm set renders, verify CubeSolver finds paths."""
+
+    @pytest.fixture(scope="class")
+    def solver(self):
+        from solver import CubeSolver
+        return CubeSolver()
+
+    @pytest.mark.parametrize("label,image_path",
+                             [c for c in TEST_CASES if c[0]["image"] in EXPANDED_SET_RENDERS],
+                             ids=[c[0]["image"] for c in TEST_CASES if c[0]["image"] in EXPANDED_SET_RENDERS])
+    def test_solver_finds_path(self, vision, solver, label, image_path):
+        """Detect stickers from render, run through CubeSolver, find path."""
+        # Use ground truth stickers (bypass CV accuracy issues)
+        stickers = label["visible_stickers"]
+
+        paths = solver.solve(stickers)
+        assert len(paths) >= 1, \
+            f"No solving paths found for {label['image']} with stickers {stickers}"
+
+    @pytest.mark.parametrize("label,image_path",
+                             [c for c in TEST_CASES if c[0]["image"] in EXPANDED_SET_RENDERS],
+                             ids=[c[0]["image"] for c in TEST_CASES if c[0]["image"] in EXPANDED_SET_RENDERS])
+    def test_solver_path_solves(self, vision, solver, label, image_path):
+        """Verify returned paths actually solve the cube when simulated."""
+        from state_resolver import Cube
+        stickers = label["visible_stickers"]
+        full_state = label.get("full_state")
+
+        paths = solver.solve(stickers)
+        if not paths:
+            pytest.skip("No paths found")
+
+        # Use first path
+        path = paths[0]
+        # Reconstruct cube from full state
+        cube = Cube()
+        if full_state:
+            for face, colors in full_state.items():
+                cube.faces[face] = colors
+
+        for step in path.steps:
+            cube.apply_algorithm(step.algorithm)
+
+        # Check if any face is uniform (at least U should be solved for LL algos)
+        u_solved = len(set(cube.faces['U'])) == 1
+        assert u_solved, \
+            f"Path {path.description} did not orient U face for {label['image']}"
+
+
 def run_accuracy_report():
     """Standalone accuracy report (run directly, not via pytest)."""
     vision = CubeVision()

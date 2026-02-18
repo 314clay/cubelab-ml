@@ -516,13 +516,196 @@ class StateResolver:
         return matches[:n]
 
 
-if __name__ == "__main__":
-    # Test the state resolver
-    print("Testing StateResolver...")
+class ExpandedStateResolver:
+    """
+    Builds lookup tables for multiple algorithm sets (OLL, PLL, COLL, ZBLL, OLLCP).
+    Each table maps visible sticker keys to match info.
+    """
 
+    DEFAULT_SETS = ['OLL', 'PLL', 'COLL', 'ZBLL', 'OLLCP']
+    AUF_ROTATIONS = ['', 'y', 'y2', "y'"]
+
+    def __init__(self, sets=None, use_all_orientations=False):
+        """
+        Args:
+            sets: Algorithm set names to load. Default: OLL, PLL, COLL, ZBLL, OLLCP.
+            use_all_orientations: If True, generate for all 24 cube orientations.
+                If False, only standard orientation (white on top) with 4 AUF rotations.
+        """
+        from algorithms import get_all_algorithm_sets
+        self.all_algorithms = get_all_algorithm_sets()
+        self.tables: Dict[str, Dict[str, Dict]] = {}
+        self.use_all_orientations = use_all_orientations
+
+        target_sets = sets or self.DEFAULT_SETS
+        for set_name in target_sets:
+            if set_name in self.all_algorithms:
+                self.tables[set_name] = self._build_table_for_set(set_name)
+
+        # Build combined OLL×PLL table if both sets are requested
+        if 'OLL' in target_sets and 'PLL' in target_sets:
+            self.tables['OLL_PLL'] = self._build_combined_oll_pll_table()
+
+    def _get_base_cubes(self) -> List[Cube]:
+        """Get base cube orientations to generate states from."""
+        if self.use_all_orientations:
+            resolver = StateResolver.__new__(StateResolver)
+            resolver.lookup_table = {}
+            return resolver._get_all_orientations()
+        else:
+            return [Cube()]  # Standard orientation only
+
+    def _build_table_for_set(self, set_name: str) -> Dict[str, Dict]:
+        """Build lookup table for a single algorithm set."""
+        cases = self.all_algorithms.get(set_name, {})
+        table: Dict[str, Dict] = {}
+
+        base_cubes = self._get_base_cubes()
+
+        for case_name, alg in cases.items():
+            if not alg:
+                continue
+
+            for base_cube in base_cubes:
+                # Apply the algorithm to the base cube
+                # This produces the state the algorithm solves
+                state_cube = base_cube.copy()
+                try:
+                    state_cube.apply_algorithm(alg)
+                except (ValueError, Exception):
+                    continue
+
+                # Generate AUF rotations
+                for rotation in self.AUF_ROTATIONS:
+                    rotated_cube = state_cube.copy()
+                    if rotation:
+                        rotated_cube.apply_algorithm(rotation)
+
+                    visible = rotated_cube.get_visible_stickers()
+                    visible_key = ''.join(visible)
+
+                    if visible_key not in table:
+                        table[visible_key] = {
+                            'set': set_name,
+                            'case': case_name,
+                            'algorithm': alg,
+                            'rotation': rotation,
+                            'visible_stickers': visible,
+                        }
+
+        return table
+
+    def _build_combined_oll_pll_table(self) -> Dict[str, Dict]:
+        """Build combined OLL×PLL lookup table.
+
+        For each OLL algorithm, apply it then each PLL algorithm to a solved cube.
+        This creates the set of all possible OLL+PLL combined states.
+        """
+        from algorithms import OLL_CASES, PLL_CASES
+        table: Dict[str, Dict] = {}
+        base_cubes = self._get_base_cubes()
+
+        for base_cube in base_cubes:
+            for oll_name, oll_alg in OLL_CASES.items():
+                if not oll_alg:
+                    continue
+
+                oll_cube = base_cube.copy()
+                try:
+                    oll_cube.apply_algorithm(oll_alg)
+                except (ValueError, Exception):
+                    continue
+
+                for pll_name, pll_alg in PLL_CASES.items():
+                    state_cube = oll_cube.copy()
+                    if pll_alg:
+                        try:
+                            state_cube.apply_algorithm(pll_alg)
+                        except (ValueError, Exception):
+                            continue
+
+                    for rotation in self.AUF_ROTATIONS:
+                        rotated_cube = state_cube.copy()
+                        if rotation:
+                            rotated_cube.apply_algorithm(rotation)
+
+                        visible = rotated_cube.get_visible_stickers()
+                        visible_key = ''.join(visible)
+
+                        if visible_key not in table:
+                            table[visible_key] = {
+                                'set': 'OLL_PLL',
+                                'case': f"{oll_name} + {pll_name}",
+                                'oll_case': oll_name,
+                                'pll_case': pll_name,
+                                'oll_algorithm': oll_alg,
+                                'pll_algorithm': pll_alg,
+                                'algorithm': oll_alg,  # Scramble algorithm (OLL part)
+                                'rotation': rotation,
+                                'visible_stickers': visible,
+                            }
+
+        return table
+
+    def lookup(self, detected_stickers: List[str], set_name: str = None) -> List[Dict]:
+        """
+        Look up detected stickers across tables.
+
+        Args:
+            detected_stickers: 15-element list of colors.
+            set_name: If specified, only search in that set's table.
+
+        Returns:
+            List of matching entries from all (or specified) tables.
+        """
+        if len(detected_stickers) != 15:
+            return []
+
+        visible_key = ''.join(detected_stickers)
+        matches = []
+
+        tables_to_search = (
+            {set_name: self.tables[set_name]}
+            if set_name and set_name in self.tables
+            else self.tables
+        )
+
+        for sname, table in tables_to_search.items():
+            if visible_key in table:
+                matches.append(table[visible_key])
+
+        return matches
+
+    def find_closest_matches(self, detected_stickers: List[str],
+                              set_name: str = None, n: int = 5,
+                              max_diff: int = 3) -> List[Tuple[Dict, int]]:
+        """Find closest matches within max_diff Hamming distance."""
+        if len(detected_stickers) != 15:
+            return []
+
+        visible_key = ''.join(detected_stickers)
+        matches = []
+
+        tables_to_search = (
+            {set_name: self.tables[set_name]}
+            if set_name and set_name in self.tables
+            else self.tables
+        )
+
+        for sname, table in tables_to_search.items():
+            for stored_key, info in table.items():
+                diff = sum(c1 != c2 for c1, c2 in zip(visible_key, stored_key))
+                if diff <= max_diff:
+                    matches.append((info, diff))
+
+        matches.sort(key=lambda x: x[1])
+        return matches[:n]
+
+
+if __name__ == "__main__":
+    print("Testing StateResolver...")
     resolver = StateResolver()
 
-    # Test with a solved cube
     solved_cube = Cube()
     visible = solved_cube.get_visible_stickers()
     print(f"\nSolved cube visible stickers: {visible}")

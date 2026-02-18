@@ -19,7 +19,7 @@ CUBE_SOLVE_DIR = os.path.join(EXPERIMENT_DIR, "cube-photo-solve")
 sys.path.insert(0, CUBE_SOLVE_DIR)
 
 from state_resolver import Cube
-from algorithms import OLL_CASES, PLL_CASES
+from algorithms import OLL_CASES, PLL_CASES, COLL_CASES, ZBLL_CASES, OLLCP_CASES
 
 OUTPUT_DIR = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "verified_renders")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -318,6 +318,69 @@ def main():
             ],
             "oll_case": "OLL 33",
             "pll_case": "J-Perm (b)",
+        },
+        # 8. COLL case 1 (AS 1 - Antisune)
+        {
+            "name": "coll_as1",
+            "algorithms": [("COLL", "AS 1", COLL_CASES["AS 1"])],
+            "oll_case": "COLL AS 1",
+            "pll_case": "N/A",
+        },
+        # 9. COLL case 2 (S 1 - Sune)
+        {
+            "name": "coll_s1",
+            "algorithms": [("COLL", "S 1", COLL_CASES["S 1"])],
+            "oll_case": "COLL S 1",
+            "pll_case": "N/A",
+        },
+        # 10. COLL case 3 (T 1)
+        {
+            "name": "coll_t1",
+            "algorithms": [("COLL", "T 1", COLL_CASES["T 1"])],
+            "oll_case": "COLL T 1",
+            "pll_case": "N/A",
+        },
+        # 11. ZBLL case 1
+        {
+            "name": "zbll_1",
+            "algorithms": [("ZBLL", "ZBLL 1", ZBLL_CASES["ZBLL 1"])],
+            "oll_case": "ZBLL 1",
+            "pll_case": "N/A",
+        },
+        # 12. ZBLL case 100
+        {
+            "name": "zbll_100",
+            "algorithms": [("ZBLL", "ZBLL 100", ZBLL_CASES["ZBLL 100"])],
+            "oll_case": "ZBLL 100",
+            "pll_case": "N/A",
+        },
+        # 13. ZBLL case 200
+        {
+            "name": "zbll_200",
+            "algorithms": [("ZBLL", "ZBLL 200", ZBLL_CASES["ZBLL 200"])],
+            "oll_case": "ZBLL 200",
+            "pll_case": "N/A",
+        },
+        # 14. OLLCP case 1
+        {
+            "name": "ollcp_1",
+            "algorithms": [("OLLCP", list(OLLCP_CASES.keys())[0], list(OLLCP_CASES.values())[0])],
+            "oll_case": f"OLLCP {list(OLLCP_CASES.keys())[0]}",
+            "pll_case": "N/A",
+        },
+        # 15. OLLCP case 2
+        {
+            "name": "ollcp_2",
+            "algorithms": [("OLLCP", list(OLLCP_CASES.keys())[50], list(OLLCP_CASES.values())[50])],
+            "oll_case": f"OLLCP {list(OLLCP_CASES.keys())[50]}",
+            "pll_case": "N/A",
+        },
+        # 16. Edge-oriented only (OLL 21 - all edges oriented, corners scrambled)
+        {
+            "name": "edges_oriented",
+            "algorithms": [("OLL", "OLL 21", OLL_CASES["OLL 21"])],
+            "oll_case": "OLL 21 (edges oriented)",
+            "pll_case": "N/A",
         },
     ]
 
