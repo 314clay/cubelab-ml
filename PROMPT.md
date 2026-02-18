@@ -317,6 +317,139 @@ After each fix:
 
 ---
 
+### STEP 8: Build single ML model for 15-sticker classification
+**Goal:** Replace the classical CV pipeline (CubeVision) with a single neural network that takes a cube image and outputs all 15 visible sticker colors.
+
+The CV pipeline (hexagon → Y-junction → warp → HSV threshold) achieves 99.4% on fixed-camera renders but ~10% on varied angles. Rather than patching each CV stage, train a CNN that learns the mapping directly.
+
+#### Architecture
+
+**Input:** 224×224 RGB image (resized from 480×480 render)
+**Output:** 15 sticker predictions, each one of 6 colors (W, Y, R, O, G, B)
+
+Use a pretrained **ResNet-18** backbone (torchvision) with the final FC layer replaced:
+```
+ResNet-18 backbone (pretrained=True, frozen early layers)
+  → AdaptiveAvgPool → 512-d feature vector
+  → FC(512, 256) → ReLU → Dropout(0.3)
+  → FC(256, 90) → reshape to (15, 6)
+  → per-sticker softmax
+```
+
+**Loss:** Sum of CrossEntropyLoss across all 15 sticker positions.
+
+**Why ResNet-18:** Small enough for CPU/MPS training (~11M params), pretrained features transfer well to color/shape recognition, well-documented.
+
+#### Files to create
+
+All under `ml/src/`:
+
+| File | Purpose |
+|------|---------|
+| `sticker_model.py` | `StickerClassifier` class: ResNet-18 backbone + classification head |
+| `sticker_dataset.py` | `StickerDataset` class: loads PNG + JSON pairs from training_renders/ |
+| `train_sticker.py` | Training loop with train/val split, checkpointing, logging |
+| `evaluate_sticker.py` | Evaluation: per-sticker accuracy, per-image accuracy, confusion matrix |
+
+#### Dataset (`sticker_dataset.py`)
+
+- Reads from `ml/data/training_renders/` (or any dir with PNG + matching JSON)
+- Each sample: load PNG → resize to 224×224 → normalize with ImageNet stats
+- Label: 15-element tensor of class indices (color_to_idx: W=0, Y=1, R=2, O=3, G=4, B=5)
+- Parse `visible_stickers` from the JSON label
+- Train/val split: 80/20 by index, deterministic with seed
+- Data augmentation (train only): ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05), RandomHorizontalFlip is **NOT** used (sticker positions are spatial)
+
+#### Training (`train_sticker.py`)
+
+```bash
+python3 ml/src/train_sticker.py --data-dir ml/data/training_renders/ --epochs 30 --device mps
+```
+
+**Training details:**
+- Optimizer: AdamW, lr=1e-3, weight_decay=1e-4
+- Scheduler: CosineAnnealingLR over total epochs
+- Batch size: 32
+- Device: auto-detect (MPS on macOS, CUDA if available, else CPU)
+- Freeze ResNet layers 1-2 for first 5 epochs, then unfreeze all
+- Save best checkpoint by val per-sticker accuracy to `ml/checkpoints/sticker_classifier.pt`
+- Print per-epoch: train loss, val loss, val per-sticker accuracy, val per-image accuracy (all 15 correct)
+
+**CLI flags:**
+- `--data-dir PATH` — training_renders directory (default: `ml/data/training_renders/`)
+- `--epochs N` — number of epochs (default: 30)
+- `--batch-size N` — batch size (default: 32)
+- `--lr FLOAT` — learning rate (default: 1e-3)
+- `--device DEVICE` — cpu/mps/cuda (default: auto)
+- `--checkpoint PATH` — save path (default: `ml/checkpoints/sticker_classifier.pt`)
+- `--seed N` — random seed (default: 42)
+
+#### Evaluation (`evaluate_sticker.py`)
+
+```bash
+python3 ml/src/evaluate_sticker.py --checkpoint ml/checkpoints/sticker_classifier.pt --data-dir ml/data/training_renders/
+```
+
+**Output:**
+```
+=== STICKER CLASSIFIER EVALUATION ===
+Per-sticker accuracy: 847/900 = 94.1%
+Per-image accuracy:   48/60 = 80.0%
+
+Per-position accuracy:
+  U0: 95.0%  U1: 96.7%  U2: 93.3%  ...
+  F0: 91.7%  F1: 90.0%  F2: 88.3%
+  R0: 93.3%  R1: 95.0%  R2: 91.7%
+
+Confusion matrix (all positions pooled):
+         W    Y    R    O    G    B
+  W    145    0    0    2    0    0
+  Y      0  138    0    5    1    0
+  ...
+```
+
+**CLI flags:**
+- `--checkpoint PATH` — model checkpoint
+- `--data-dir PATH` — test data directory
+- `--device DEVICE` — cpu/mps/cuda
+
+#### Training data generation
+
+Before training, generate enough data. Use `render_training_data.py`:
+
+```bash
+# Generate 500 renders for initial training (takes ~10 min)
+/opt/homebrew/bin/blender --background --python ml/blender/render_training_data.py -- --count 500 --seed 42
+
+# If accuracy plateaus, generate more with different seed
+/opt/homebrew/bin/blender --background --python ml/blender/render_training_data.py -- --count 500 --seed 123
+```
+
+Start with 500 renders. If validation accuracy plateaus below target, generate more.
+
+#### Step-by-step execution order
+
+1. Generate training data: `--count 500 --seed 42` (skip if renders already exist)
+2. Create `sticker_model.py` with `StickerClassifier`
+3. Create `sticker_dataset.py` with `StickerDataset`
+4. Create `train_sticker.py` — verify it runs for 1 epoch without errors
+5. Train full model: 30 epochs, save best checkpoint
+6. Create `evaluate_sticker.py` — run evaluation on val set
+7. If val per-sticker accuracy < 90%, diagnose and fix (more data, tune hyperparams, adjust augmentation)
+8. Document final accuracy in evaluation output
+
+#### Verification (all must pass)
+
+- [ ] `sticker_model.py`: `StickerClassifier` forward pass works on dummy input `(1, 3, 224, 224)` → output shape `(1, 15, 6)`
+- [ ] `sticker_dataset.py`: loads training_renders, returns correct tensor shapes
+- [ ] `train_sticker.py`: completes 1 epoch without errors on MPS/CPU
+- [ ] `train_sticker.py`: completes full training, saves checkpoint
+- [ ] `evaluate_sticker.py`: loads checkpoint, reports per-sticker and per-image accuracy
+- [ ] Val per-sticker accuracy > 90%
+- [ ] Val per-image accuracy > 70%
+
+---
+
 ## Completion
 
 When ALL of these are true:
@@ -325,7 +458,8 @@ When ALL of these are true:
 - Step 3: 11 verified Blender renders with JSON ground truth, user-confirmed ✅
 - Step 4: Test harness runs, 99.4% accuracy on fixed-camera renders ✅
 - Step 5: Aggregate sticker accuracy > 90% on verified renders ✅
-- Step 6: Training data generator produces 1,218+ renders with varied camera/lighting
-- Step 7: CV pipeline accuracy > 85% on varied training renders
+- Step 6: Training data generator produces renders with varied camera/lighting ✅
+- Step 7: CV pipeline accuracy > 85% on varied training renders (SKIPPED — replaced by ML approach)
+- Step 8: ML sticker classifier achieves >90% per-sticker accuracy on val set
 
-Output: `<promise>TRAINING DATA GENERATED</promise>`
+Output: `<promise>STICKER CLASSIFIER TRAINED</promise>`
