@@ -61,6 +61,14 @@ class HomePage extends ConsumerWidget {
             const SizedBox(height: AppSpacing.md),
 
             _FeatureCard(
+              icon: Icons.camera_enhance,
+              title: 'Cube Scan',
+              subtitle: 'Photograph your cube, identify the case',
+              onTap: () => NavigationUtils.goToCubeScan(context),
+            ),
+            const SizedBox(height: AppSpacing.md),
+
+            _FeatureCard(
               icon: Icons.emoji_events_outlined,
               title: 'Daily Scramble',
               subtitle: 'Compete on today\'s scramble challenge',

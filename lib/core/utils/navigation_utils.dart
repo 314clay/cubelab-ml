@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cubelab/features/cross_trainer/cross_trainer_section.dart';
 import 'package:cubelab/features/algorithm/algorithm_section.dart';
+import 'package:cubelab/features/cube_scan/cube_scan_page.dart';
 import 'package:cubelab/features/daily_scramble/daily_scramble_section.dart';
 import 'package:cubelab/features/timer/timer_page.dart';
 import 'package:cubelab/features/profile/profile_page.dart';
@@ -34,6 +35,14 @@ class NavigationUtils {
       MaterialPageRoute(
         builder: (_) => DailyScrambleSection(initialPage: initialPage),
       ),
+    );
+  }
+
+  /// Navigate to Cube Scan
+  static void goToCubeScan(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CubeScanPage()),
     );
   }
 
