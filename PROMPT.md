@@ -207,13 +207,125 @@ After each fix:
 
 ---
 
+---
+
+### STEP 6: Generate randomized training data with varied camera/lighting
+**Script:** `ml/blender/render_training_data.py` (create this)
+**Output dir:** `ml/data/training_renders/`
+**Verification:** `ml/blender/verify_training_data.py` (create this)
+
+The fixed-camera renders from Step 3 prove the pipeline works. Now generate hundreds of renders with randomized parameters to stress-test the CV pipeline under realistic variation.
+
+#### 6a: Create `render_training_data.py`
+
+A Blender script that generates randomized renders. Reuses shared functions from `render_known_states.py` via `exec()` with a custom globals dict (set `__name__` to avoid re-running `main()`):
+
+```python
+render_globals = {"__name__": "render_known_states", "__builtins__": __builtins__}
+exec(open(os.path.join(SCRIPT_DIR, "render_known_states.py")).read(), render_globals)
+clear_scene = render_globals['clear_scene']
+# ... pull other needed symbols
+```
+
+**Randomized parameters (from notebook `explore_cube_positioning-checkpoint.ipynb`):**
+
+| Parameter | Range | Notes |
+|-----------|-------|-------|
+| Distance | 3.0 - 10.0 | Camera distance from cube |
+| Azimuth | 0 - 2π | Full rotation around cube |
+| Elevation | 10° - 75° | Camera height angle |
+| Focal length | 24 - 70mm | Phone to webcam range |
+| Look-at X offset | -1.5 to +1.5 | Shifts cube left/right in frame |
+| Look-at Y offset | -0.5 to +0.5 | Minimal effect |
+| Look-at Z offset | -1.0 to +1.0 | Shifts cube up/down in frame |
+
+**Camera setup:** Use Blender `TRACK_TO` constraint pointing at an empty at the look-at point. This avoids gimbal lock from manual Euler angles.
+
+**Rejection sampling:** ~75-85% of random configs put the cube outside the frame. Use a retry loop (max 100 attempts per render) with pinhole projection math to check all 8 cube corners are within frame bounds before rendering.
+
+**OLL/PLL coverage:** Build the full cartesian product: 58 OLL states (57 + OLL Skip, excluding aliases Sune/Anti-Sune) × 21 PLL states = 1,218 combinations. Each combo gets one render with random camera/lighting. Support `--count N` for smaller test runs.
+
+**5 lighting presets** (one chosen randomly per render):
+1. **standard** — Dual sun (3.0 + 1.5) + ambient. Current baseline.
+2. **warm_studio** — Warm area lights, orange-tinted ambient. Indoor table lighting.
+3. **cool_daylight** — Blueish key sun + warm fill. Window light.
+4. **high_contrast** — Single hard sun (5.0), no fill, dark ambient. Strong shadows.
+5. **soft_diffuse** — World-only lighting (strength 2.0), no directional lights. Overcast.
+
+Each preset also randomizes background gray value (0.1-0.5).
+
+**Output per render:**
+- PNG image (480×480, CYCLES 64 samples)
+- JSON label (same format as verified_renders, plus `camera` and `lighting_preset` metadata)
+
+**Manifest:** `manifest.json` summarizing: total renders, OLL/PLL coverage, parameter ranges, rejection rate, timing.
+
+**CLI:**
+```bash
+# Full run (all 1,218 combos)
+/opt/homebrew/bin/blender --background --python ml/blender/render_training_data.py -- --seed 42
+
+# Quick test (50 renders)
+/opt/homebrew/bin/blender --background --python ml/blender/render_training_data.py -- --count 50 --seed 42
+```
+
+#### 6b: Create `verify_training_data.py`
+
+A standard Python script (not Blender) that spot-checks renders by running `CubeVision.detect_stickers()` on a random sample and comparing against JSON labels.
+
+```bash
+python3 ml/blender/verify_training_data.py --sample-size 50
+```
+
+**Verification (all must pass):**
+- [ ] `render_training_data.py` runs without errors with `--count 5`
+- [ ] 5 PNG + 5 JSON files appear in `ml/data/training_renders/`
+- [ ] `manifest.json` has correct field structure
+- [ ] JSON labels have all expected fields (same as verified_renders + camera + lighting_preset)
+- [ ] `verify_training_data.py` runs on the 5 test renders
+- [ ] Full run (`--count 0` or no flag) generates ~1,218 renders
+- [ ] Spot-check 50 random renders: document sticker accuracy %
+
+#### 6c: Run full generation and verify
+
+1. Run `--count 5` test, inspect outputs
+2. Run `--count 50`, run verification, fix issues
+3. Run full generation (all 1,218 combos)
+4. Run verification on 50-sample spot check
+5. Document accuracy in manifest
+
+---
+
+### STEP 7: Improve CV pipeline accuracy on varied renders
+**Test:** Run `verify_training_data.py` on the full training set
+
+The CV pipeline was tuned for fixed-camera renders (99.4% at one angle). Varied camera angles and lighting will expose new failure modes:
+- Different hexagon shapes at extreme angles
+- Color classification failures under warm/cool/high-contrast lighting
+- Y-junction detection failures when face proportions change
+
+**Priority order (same as Step 5):**
+1. HEXAGON_FAIL — adjust segmentation for varied backgrounds
+2. YJUNCTION_FAIL — seam detection under different lighting
+3. GRID_FAIL — warp orientation for non-standard camera angles
+4. COLOR_FAIL — HSV thresholds need to handle lighting variation
+
+After each fix:
+- Re-run `verify_training_data.py --sample-size 100`
+- Record before/after accuracy
+- Continue until accuracy exceeds 85% on varied renders
+
+---
+
 ## Completion
 
 When ALL of these are true:
-- Step 1: All Cube class move tests pass
-- Step 2: All state resolver verification tests pass
-- Step 3: At least 5 Blender renders exist with verified JSON ground truth
-- Step 4: Test harness runs and reports accuracy
-- Step 5: Aggregate sticker accuracy > 90% on verified renders
+- Step 1: All Cube class move tests pass (42/42) ✅
+- Step 2: All state resolver verification tests pass (15/15) ✅
+- Step 3: 11 verified Blender renders with JSON ground truth, user-confirmed ✅
+- Step 4: Test harness runs, 99.4% accuracy on fixed-camera renders ✅
+- Step 5: Aggregate sticker accuracy > 90% on verified renders ✅
+- Step 6: Training data generator produces 1,218+ renders with varied camera/lighting
+- Step 7: CV pipeline accuracy > 85% on varied training renders
 
-Output: `<promise>PIPELINE VERIFIED</promise>`
+Output: `<promise>TRAINING DATA GENERATED</promise>`
