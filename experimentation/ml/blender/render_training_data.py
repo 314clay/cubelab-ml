@@ -238,8 +238,12 @@ def setup_randomized_camera(rng, img_size):
 
     for attempt in range(max_attempts):
         distance = rng.uniform(3.0, 10.0)
-        azimuth = rng.uniform(0, 2 * math.pi)
-        elevation = rng.uniform(math.radians(10), math.radians(75))
+        # Constrain azimuth so U, F, R faces are all visible.
+        # Standard view is at azimuth=-45 deg. F face visible when Y<0
+        # (sin(az)<0), R face visible when X>0 (cos(az)>0).
+        # Range: -75 to -15 deg gives good visibility of all 3 faces.
+        azimuth = rng.uniform(math.radians(-75), math.radians(-15))
+        elevation = rng.uniform(math.radians(15), math.radians(65))
         focal_mm = rng.uniform(24, 70)
 
         look_x = rng.uniform(-1.5, 1.5)
