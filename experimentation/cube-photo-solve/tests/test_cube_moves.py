@@ -313,6 +313,88 @@ class TestAlgorithmCycles:
         assert cube.get_state_string() == original
 
 
+class TestSliceMoves:
+    """S and E slice moves."""
+
+    def test_S_four_times(self):
+        """S applied 4 times returns to solved."""
+        cube = Cube()
+        original = cube.get_state_string()
+        for _ in range(4):
+            cube.apply_move('S')
+        assert cube.get_state_string() == original
+
+    def test_S_Sprime(self):
+        """S followed by S' returns to solved."""
+        cube = Cube()
+        original = cube.get_state_string()
+        cube.apply_move('S')
+        cube.apply_move("S'")
+        assert cube.get_state_string() == original
+
+    def test_E_four_times(self):
+        """E applied 4 times returns to solved."""
+        cube = Cube()
+        original = cube.get_state_string()
+        for _ in range(4):
+            cube.apply_move('E')
+        assert cube.get_state_string() == original
+
+    def test_E_Eprime(self):
+        """E followed by E' returns to solved."""
+        cube = Cube()
+        original = cube.get_state_string()
+        cube.apply_move('E')
+        cube.apply_move("E'")
+        assert cube.get_state_string() == original
+
+    def test_S_specific_permutation(self):
+        """After S on solved cube, U[4] should get L[4]'s color (Green).
+        S follows F direction: U←L(rev), L←D, D←R(rev), R←U."""
+        cube = Cube()
+        cube.apply_move('S')
+        # U middle row gets L middle column (reversed): L[7,4,1] -> U[3,4,5]
+        assert cube.faces['U'][4] == 'G', f"U[4] should be Green, got {cube.faces['U'][4]}"
+        # R middle column gets old U values (White)
+        assert cube.faces['R'][4] == 'W', f"R[4] should be White, got {cube.faces['R'][4]}"
+        # D middle row gets R middle column (reversed)
+        assert cube.faces['D'][4] == 'B', f"D[4] should be Blue, got {cube.faces['D'][4]}"
+        # L middle column gets D middle row
+        assert cube.faces['L'][4] == 'Y', f"L[4] should be Yellow, got {cube.faces['L'][4]}"
+
+    def test_E_specific_permutation(self):
+        """After E on solved cube, E follows D direction: F←L←B←R←F.
+        So F[4] gets L[4]'s color (Green)."""
+        cube = Cube()
+        cube.apply_move('E')
+        # F gets L's values (Green)
+        assert cube.faces['F'][4] == 'G', f"F[4] should be Green, got {cube.faces['F'][4]}"
+        # L gets B's values (Orange)
+        assert cube.faces['L'][4] == 'O', f"L[4] should be Orange, got {cube.faces['L'][4]}"
+        # B gets R's values (Blue)
+        assert cube.faces['B'][4] == 'B', f"B[4] should be Blue, got {cube.faces['B'][4]}"
+        # R gets F's values (Red)
+        assert cube.faces['R'][4] == 'R', f"R[4] should be Red, got {cube.faces['R'][4]}"
+
+    def test_S_does_not_affect_F_or_B(self):
+        """S should not change F or B faces."""
+        cube = Cube()
+        original_F = cube.faces['F'].copy()
+        original_B = cube.faces['B'].copy()
+        cube.apply_move('S')
+        assert cube.faces['F'] == original_F
+        assert cube.faces['B'] == original_B
+
+    def test_E_does_not_affect_U_or_D(self):
+        """E should not change U or D faces."""
+        cube = Cube()
+        original_U = cube.faces['U'].copy()
+        original_D = cube.faces['D'].copy()
+        cube.apply_move('E')
+        assert cube.faces['U'] == original_U
+        assert cube.faces['D'] == original_D
+
+
 class TestWideMoves:
     """Wide moves combine face turn + middle layer."""
 
@@ -331,6 +413,91 @@ class TestWideMoves:
         original = cube.get_state_string()
         for _ in range(4):
             cube.apply_move('r')
+        assert cube.get_state_string() == original
+
+    def test_l_equals_L_plus_M(self):
+        """l should equal L followed by M."""
+        c1 = Cube()
+        c2 = Cube()
+        c1.apply_move('l')
+        c2.apply_move('L')
+        c2.apply_move('M')
+        assert c1.get_state_string() == c2.get_state_string()
+
+    def test_l_four_times(self):
+        """l applied 4 times returns to solved."""
+        cube = Cube()
+        original = cube.get_state_string()
+        for _ in range(4):
+            cube.apply_move('l')
+        assert cube.get_state_string() == original
+
+    def test_u_equals_U_plus_Eprime(self):
+        """u should equal U followed by E'."""
+        c1 = Cube()
+        c2 = Cube()
+        c1.apply_move('u')
+        c2.apply_move('U')
+        c2.apply_move("E'")
+        assert c1.get_state_string() == c2.get_state_string()
+
+    def test_u_four_times(self):
+        """u applied 4 times returns to solved."""
+        cube = Cube()
+        original = cube.get_state_string()
+        for _ in range(4):
+            cube.apply_move('u')
+        assert cube.get_state_string() == original
+
+    def test_d_equals_D_plus_E(self):
+        """d should equal D followed by E."""
+        c1 = Cube()
+        c2 = Cube()
+        c1.apply_move('d')
+        c2.apply_move('D')
+        c2.apply_move('E')
+        assert c1.get_state_string() == c2.get_state_string()
+
+    def test_d_four_times(self):
+        """d applied 4 times returns to solved."""
+        cube = Cube()
+        original = cube.get_state_string()
+        for _ in range(4):
+            cube.apply_move('d')
+        assert cube.get_state_string() == original
+
+    def test_f_equals_F_plus_S(self):
+        """f should equal F followed by S."""
+        c1 = Cube()
+        c2 = Cube()
+        c1.apply_move('f')
+        c2.apply_move('F')
+        c2.apply_move('S')
+        assert c1.get_state_string() == c2.get_state_string()
+
+    def test_f_four_times(self):
+        """f applied 4 times returns to solved."""
+        cube = Cube()
+        original = cube.get_state_string()
+        for _ in range(4):
+            cube.apply_move('f')
+        assert cube.get_state_string() == original
+
+    def test_b_equals_B_plus_Sprime(self):
+        """b should equal B followed by S'."""
+        c1 = Cube()
+        c2 = Cube()
+        c1.apply_move('b')
+        c2.apply_move('B')
+        c2.apply_move("S'")
+        assert c1.get_state_string() == c2.get_state_string()
+
+    def test_b_four_times(self):
+        """b applied 4 times returns to solved."""
+        cube = Cube()
+        original = cube.get_state_string()
+        for _ in range(4):
+            cube.apply_move('b')
         assert cube.get_state_string() == original
 
 
@@ -353,23 +520,26 @@ class TestRotations:
             cube.apply_move('x')
         assert cube.get_state_string() == original
 
-    def test_y_equals_U_Dprime(self):
-        """y rotation should equal U + D' + E' (but simplified as U + D' in current impl)."""
-        # Note: The current implementation does y = U + D' which is INCOMPLETE
-        # (missing the E layer / middle layer rotation).
-        # This test documents the current behavior.
+    def test_z_rotation_four_times(self):
+        """z rotation 4 times returns to solved."""
+        cube = Cube()
+        original = cube.get_state_string()
+        for _ in range(4):
+            cube.apply_move('z')
+        assert cube.get_state_string() == original
+
+    def test_y_equals_U_Eprime_Dprime(self):
+        """y rotation should equal U + E' + D'."""
         c1 = Cube()
         c2 = Cube()
         c1.apply_move('y')
         c2.apply_move('U')
+        c2.apply_move("E'")
         c2.apply_move("D'")
-        # If y is properly implemented, this should match
-        # If not, this test will fail and we need to fix y rotation
-        assert c1.get_state_string() == c2.get_state_string(), \
-            "y rotation is incomplete -- it needs to also rotate the E (middle) layer"
+        assert c1.get_state_string() == c2.get_state_string()
 
-    def test_x_equals_R_Lprime(self):
-        """x rotation should equal R + L' + M' but current impl is R + M' + L'."""
+    def test_x_equals_R_Mprime_Lprime(self):
+        """x rotation should equal R + M' + L'."""
         c1 = Cube()
         c2 = Cube()
         c1.apply_move('x')
@@ -377,6 +547,43 @@ class TestRotations:
         c2.apply_move("M'")
         c2.apply_move("L'")
         assert c1.get_state_string() == c2.get_state_string()
+
+    def test_z_equals_F_S_Bprime(self):
+        """z rotation should equal F + S + B'."""
+        c1 = Cube()
+        c2 = Cube()
+        c1.apply_move('z')
+        c2.apply_move('F')
+        c2.apply_move('S')
+        c2.apply_move("B'")
+        assert c1.get_state_string() == c2.get_state_string()
+
+    def test_y_moves_middle_layer(self):
+        """y rotation must move the E layer. After y, F[4] should get what was at R[4]."""
+        cube = Cube()
+        # On solved cube, y follows U direction: F←R←B←L←F (receiving)
+        # E' is opposite of E. E: F←L. E': F←R.
+        # So after y: F middle gets R's values.
+        cube.apply_move('y')
+        # U direction: F←R, so F[4] gets R[4]'s old value (Blue)
+        # Actually let's trace: y = U + E' + D'
+        # U: F[0:3] ← R[0:3]
+        # E': opposite of E (F←L←B←R←F), so E' is F←R←B←L←F
+        #   i.e. F[3:6] ← R[3:6]
+        # D': opposite of D (F←L←B←R←F), so D' is F←R←B←L←F
+        #   i.e. F[6:9] ← R[6:9]
+        # All rows of F get R's values!
+        assert cube.faces['F'][4] == 'B', f"F[4] should be Blue after y, got {cube.faces['F'][4]}"
+
+    def test_z_moves_middle_layer(self):
+        """z rotation must move the S layer."""
+        cube = Cube()
+        cube.apply_move('z')
+        # z = F + S + B'. After z on solved cube, the entire cube rotates.
+        # All of U should now have L's color (Green) — z rotates U←L
+        # Since F: U←L(rev), S: U←L(rev) on middle, B': U←L(rev) on top row
+        # Actually for z: U face gets what was at L face
+        assert cube.faces['U'][4] == 'G', f"U[4] should be Green after z, got {cube.faces['U'][4]}"
 
 
 class TestSolvedCubeState:

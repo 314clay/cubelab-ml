@@ -102,10 +102,22 @@ class Cube:
             self._move_B()
         elif move == 'M':
             self._move_M()
+        elif move == 'S':
+            self._move_S()
+        elif move == 'E':
+            self._move_E()
         elif move == 'r':
             self._move_r()
+        elif move == 'l':
+            self._move_l()
+        elif move == 'u':
+            self._move_u()
+        elif move == 'd':
+            self._move_d()
         elif move == 'f':
             self._move_f()
+        elif move == 'b':
+            self._move_b()
         elif move == 'x':
             self._move_x()
         elif move == 'y':
@@ -113,7 +125,7 @@ class Cube:
         elif move == 'z':
             self._move_z()
         else:
-            pass  # Ignore unknown moves
+            raise ValueError(f"Unknown move: {move}")
 
     def _rotate_face_cw(self, face: str):
         """Rotate a face 90 degrees clockwise."""
@@ -216,33 +228,80 @@ class Cube:
             self.faces['F'][1], self.faces['F'][4], self.faces['F'][7]
         self.faces['F'][1], self.faces['F'][4], self.faces['F'][7] = temp
 
+    def _move_S(self):
+        """S move: Standing slice, same direction as F, on middle layer."""
+        temp = [self.faces['U'][3], self.faces['U'][4], self.faces['U'][5]]
+        # U middle row gets L middle column (reversed)
+        self.faces['U'][3], self.faces['U'][4], self.faces['U'][5] = \
+            self.faces['L'][7], self.faces['L'][4], self.faces['L'][1]
+        # L middle column gets D middle row
+        self.faces['L'][1], self.faces['L'][4], self.faces['L'][7] = \
+            self.faces['D'][3], self.faces['D'][4], self.faces['D'][5]
+        # D middle row gets R middle column (reversed)
+        self.faces['D'][3], self.faces['D'][4], self.faces['D'][5] = \
+            self.faces['R'][7], self.faces['R'][4], self.faces['R'][1]
+        # R middle column gets old U middle row
+        self.faces['R'][1], self.faces['R'][4], self.faces['R'][7] = temp
+
+    def _move_E(self):
+        """E move: Equatorial slice, same direction as D, on middle layer."""
+        temp = [self.faces['F'][3], self.faces['F'][4], self.faces['F'][5]]
+        # Same cycle as D: F←L←B←R←F
+        self.faces['F'][3], self.faces['F'][4], self.faces['F'][5] = \
+            self.faces['L'][3], self.faces['L'][4], self.faces['L'][5]
+        self.faces['L'][3], self.faces['L'][4], self.faces['L'][5] = \
+            self.faces['B'][3], self.faces['B'][4], self.faces['B'][5]
+        self.faces['B'][3], self.faces['B'][4], self.faces['B'][5] = \
+            self.faces['R'][3], self.faces['R'][4], self.faces['R'][5]
+        self.faces['R'][3], self.faces['R'][4], self.faces['R'][5] = temp
+
     def _move_r(self):
         """r move: Right two layers (R + M')."""
         self._move_R()
         self.apply_move("M'")
 
+    def _move_l(self):
+        """l move: Left two layers (L + M)."""
+        self._move_L()
+        self._move_M()
+
+    def _move_u(self):
+        """u move: Upper two layers (U + E')."""
+        self._move_U()
+        self.apply_move("E'")
+
+    def _move_d(self):
+        """d move: Down two layers (D + E)."""
+        self._move_D()
+        self._move_E()
+
     def _move_f(self):
         """f move: Front two layers (F + S)."""
         self._move_F()
-        # S is the middle layer parallel to F (not implemented, approximate)
+        self._move_S()
+
+    def _move_b(self):
+        """b move: Back two layers (B + S')."""
+        self._move_B()
+        self.apply_move("S'")
 
     def _move_x(self):
-        """x rotation: Entire cube rotation around R axis."""
+        """x rotation: Entire cube rotation around R axis (R + M' + L')."""
         self._move_R()
         self.apply_move("M'")
         self.apply_move("L'")
 
     def _move_y(self):
-        """y rotation: Entire cube rotation around U axis."""
+        """y rotation: Entire cube rotation around U axis (U + E' + D')."""
         self._move_U()
+        self.apply_move("E'")
         self.apply_move("D'")
-        # Rotate middle layer
 
     def _move_z(self):
-        """z rotation: Entire cube rotation around F axis."""
+        """z rotation: Entire cube rotation around F axis (F + S + B')."""
         self._move_F()
+        self._move_S()
         self.apply_move("B'")
-        # Rotate middle layer
 
     def apply_algorithm(self, algorithm: str):
         """
