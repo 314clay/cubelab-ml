@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cubelab/data/models/cube_scan_result.dart';
 import 'package:cubelab/core/theme/app_colors.dart';
 import 'package:cubelab/core/theme/app_text_styles.dart';
 import 'package:cubelab/core/theme/app_spacing.dart';
@@ -257,8 +258,32 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
             _buildCaseIdentification(result),
             const SizedBox(height: AppSpacing.lg),
 
-            // Show Solution button or revealed content
-            if (!state.solutionRevealed)
+            // Solved state: no solution to show, just a success message
+            if (result.phase == 'solved') ...[
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: AppSpacing.cardRadius,
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  children: [
+                    const Icon(Icons.check_circle, color: AppColors.success, size: 48),
+                    const SizedBox(height: AppSpacing.md),
+                    Text('Cube is solved!', style: AppTextStyles.h3),
+                    const SizedBox(height: AppSpacing.sm),
+                    const Text(
+                      'All stickers are in the correct position.',
+                      style: AppTextStyles.bodySecondary,
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ]
+            // Normal case: show solution button or revealed content
+            else if (!state.solutionRevealed)
               ElevatedButton(
                 onPressed: () =>
                     ref.read(cubeScanProvider.notifier).revealSolution(),
@@ -292,38 +317,39 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
               ],
               const SizedBox(height: AppSpacing.lg),
 
-              // SRS action
-              SrsActionWidget(
-                caseName: result.caseName,
-                isKnownAlgorithm: state.isKnownAlgorithm,
-                onAddToQueue: () {
-                  ref.read(cubeScanProvider.notifier).addToQueue();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '${result.caseName ?? 'Case'} added to practice queue',
+              // SRS action (only show when there's a case to act on)
+              if (result.caseName != null)
+                SrsActionWidget(
+                  caseName: result.caseName,
+                  isKnownAlgorithm: state.isKnownAlgorithm,
+                  onAddToQueue: () {
+                    ref.read(cubeScanProvider.notifier).addToQueue();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          '${result.caseName!} added to practice queue',
+                        ),
+                        backgroundColor: AppColors.primary,
+                        duration: const Duration(seconds: 2),
                       ),
-                      backgroundColor: AppColors.primary,
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                },
-                onSkip: () {
-                  ref.read(cubeScanProvider.notifier).completeSrsAction();
-                },
-                onRate: (rating) {
-                  ref.read(cubeScanProvider.notifier).rateReview(rating);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '${result.caseName ?? 'Case'} reviewed',
+                    );
+                  },
+                  onSkip: () {
+                    ref.read(cubeScanProvider.notifier).completeSrsAction();
+                  },
+                  onRate: (rating) {
+                    ref.read(cubeScanProvider.notifier).rateReview(rating);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          '${result.caseName!} reviewed',
+                        ),
+                        backgroundColor: AppColors.primary,
+                        duration: const Duration(seconds: 2),
                       ),
-                      backgroundColor: AppColors.primary,
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                },
-              ),
+                    );
+                  },
+                ),
             ],
             const SizedBox(height: AppSpacing.xl),
           ],
@@ -332,8 +358,8 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
     );
   }
 
-  Widget _buildCaseIdentification(result) {
-    final confidence = result.confidence as double;
+  Widget _buildCaseIdentification(CubeScanResult result) {
+    final confidence = result.confidence;
     final Color confidenceColor;
     if (confidence >= 0.95) {
       confidenceColor = AppColors.success;
@@ -373,8 +399,8 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
     );
   }
 
-  Widget _buildStickerOverlay(result) {
-    final visible27 = result.visible27 as List<String>;
+  Widget _buildStickerOverlay(CubeScanResult result) {
+    final visible27 = result.visible27;
     if (visible27.isEmpty) return const SizedBox.shrink();
 
     return Container(
@@ -388,7 +414,7 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
         size: const Size(double.infinity, 180),
         painter: StickerOverlayPainter(
           visible27: visible27,
-          phase: result.phase as String,
+          phase: result.phase,
         ),
       ),
     );

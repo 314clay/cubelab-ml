@@ -3,8 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:cubelab/core/theme/app_colors.dart';
 
-/// CustomPainter that draws a 3x3 grid overlay highlighting stickers
-/// based on the detected phase (OLL, PLL, solved).
+/// CustomPainter that draws a 3-face cube diagram with actual sticker colors
+/// and phase-based highlight borders (OLL, PLL, solved).
 class StickerOverlayPainter extends CustomPainter {
   /// 27 sticker colors in order: U-face (9), F-face (9), R-face (9)
   final List<String> visible27;
@@ -17,6 +17,15 @@ class StickerOverlayPainter extends CustomPainter {
     required this.phase,
   });
 
+  static const _stickerColors = {
+    'W': Color(0xFFFFFFFF), // White
+    'Y': Color(0xFFFFEB3B), // Yellow
+    'R': Color(0xFFE53935), // Red
+    'O': Color(0xFFFF9800), // Orange
+    'B': Color(0xFF1E88E5), // Blue
+    'G': Color(0xFF43A047), // Green
+  };
+
   @override
   void paint(Canvas canvas, Size size) {
     if (visible27.length != 27) return;
@@ -25,15 +34,45 @@ class StickerOverlayPainter extends CustomPainter {
     final fFace = visible27.sublist(9, 18);
     final rFace = visible27.sublist(18, 27);
 
-    // Layout: U-face top-center, F-face bottom-left, R-face bottom-right
-    // as seen from a 3/4 angle view of the cube
-    final centerX = size.width / 2;
-    final centerY = size.height / 2;
-    final cellSize = math.min(size.width, size.height) / 12;
+    final cellSize = math.min(size.width, size.height) / 10;
+    final gap = cellSize * 0.08;
 
-    _drawFaceGrid(canvas, uFace, centerX - cellSize * 1.5, centerY - cellSize * 3.5, cellSize, phase, 'U');
-    _drawFaceGrid(canvas, fFace, centerX - cellSize * 3.5, centerY - cellSize * 0.5, cellSize, phase, 'F');
-    _drawFaceGrid(canvas, rFace, centerX + cellSize * 0.5, centerY - cellSize * 0.5, cellSize, phase, 'R');
+    // Position the three face grids to resemble a cube net:
+    // U-face centered above, F-face below-left, R-face below-right
+    final centerX = size.width / 2;
+    final topY = size.height * 0.08;
+
+    // U face: centered at top
+    _drawFaceGrid(
+      canvas, uFace,
+      centerX - cellSize * 1.5, topY,
+      cellSize, gap, 'U',
+    );
+
+    // F face: below U, shifted left
+    _drawFaceGrid(
+      canvas, fFace,
+      centerX - cellSize * 3.3, topY + cellSize * 3 + cellSize * 0.3,
+      cellSize, gap, 'F',
+    );
+
+    // R face: below U, shifted right
+    _drawFaceGrid(
+      canvas, rFace,
+      centerX + cellSize * 0.3, topY + cellSize * 3 + cellSize * 0.3,
+      cellSize, gap, 'R',
+    );
+
+    // Draw face labels
+    final labelStyle = TextStyle(
+      color: AppColors.textTertiary,
+      fontSize: cellSize * 0.4,
+      fontWeight: FontWeight.w600,
+    );
+
+    _drawLabel(canvas, 'U', centerX, topY - cellSize * 0.25, labelStyle);
+    _drawLabel(canvas, 'F', centerX - cellSize * 1.8, topY + cellSize * 3.15, labelStyle);
+    _drawLabel(canvas, 'R', centerX + cellSize * 1.8, topY + cellSize * 3.15, labelStyle);
   }
 
   void _drawFaceGrid(
@@ -42,79 +81,93 @@ class StickerOverlayPainter extends CustomPainter {
     double startX,
     double startY,
     double cellSize,
-    String phase,
+    double gap,
     String faceLabel,
   ) {
+    // Draw face background
+    final bgRect = Rect.fromLTWH(
+      startX - gap,
+      startY - gap,
+      cellSize * 3 + gap * 2,
+      cellSize * 3 + gap * 2,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(bgRect, const Radius.circular(4)),
+      Paint()..color = const Color(0xFF2C2C2C),
+    );
+
     for (int row = 0; row < 3; row++) {
       for (int col = 0; col < 3; col++) {
         final index = row * 3 + col;
         final sticker = face[index];
+
         final rect = Rect.fromLTWH(
-          startX + col * cellSize,
-          startY + row * cellSize,
-          cellSize,
-          cellSize,
+          startX + col * cellSize + gap,
+          startY + row * cellSize + gap,
+          cellSize - gap * 2,
+          cellSize - gap * 2,
         );
 
-        final highlight = _getHighlightColor(sticker, phase, faceLabel, index);
-
-        // Draw sticker fill
-        final fillPaint = Paint()
-          ..color = highlight.withValues(alpha: 0.35)
-          ..style = PaintingStyle.fill;
+        // Draw sticker color
+        final stickerColor = _stickerColors[sticker] ?? AppColors.textTertiary;
         canvas.drawRRect(
-          RRect.fromRectAndRadius(rect, const Radius.circular(2)),
-          fillPaint,
+          RRect.fromRectAndRadius(rect, const Radius.circular(3)),
+          Paint()..color = stickerColor,
         );
 
-        // Draw sticker border
-        final borderPaint = Paint()
-          ..color = highlight.withValues(alpha: 0.8)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2;
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(rect, const Radius.circular(2)),
-          borderPaint,
-        );
+        // Draw phase-based highlight border
+        final highlight = _getHighlightColor(sticker, faceLabel, index);
+        if (highlight != null) {
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+              rect.inflate(1),
+              const Radius.circular(4),
+            ),
+            Paint()
+              ..color = highlight
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 2.5,
+          );
+        }
       }
     }
   }
 
-  Color _getHighlightColor(String sticker, String phase, String face, int index) {
+  /// Returns highlight border color, or null for no highlight.
+  Color? _getHighlightColor(String sticker, String face, int index) {
     switch (phase) {
       case 'oll':
-        // OLL: U-face white stickers are correct (green), non-white are wrong (orange)
         if (face == 'U') {
-          return sticker == 'W' ? AppColors.success : const Color(0xFFFFA726);
-        }
-        // F/R face: top row shows misorientation
-        if (index < 3) {
-          return sticker == _expectedCenter(face)
-              ? AppColors.success
+          // OLL: green border on correct white stickers, orange on misoriented
+          return sticker == 'W'
+              ? AppColors.success.withValues(alpha: 0.8)
               : const Color(0xFFFFA726);
         }
-        return AppColors.success;
+        // Side faces: highlight top row misoriented stickers
+        if (index < 3) {
+          final expected = _expectedCenter(face);
+          return sticker != expected ? const Color(0xFFFFA726) : null;
+        }
+        return null;
 
       case 'pll':
-        // PLL: U-face all white (correct), side stickers may be swapped
-        if (face == 'U') return AppColors.success;
-        // Side faces: top row may have mispositioned stickers
+        if (face == 'U') return null; // U-face is all white, no highlight needed
+        // Side faces: amber on mispositioned top-row stickers
         if (index < 3) {
-          return sticker == _expectedCenter(face)
-              ? AppColors.success
-              : const Color(0xFFFFC107);
+          final expected = _expectedCenter(face);
+          return sticker != expected ? const Color(0xFFFFC107) : null;
         }
-        return AppColors.success;
+        return null;
 
       case 'solved':
-        return AppColors.success;
+        // All green borders
+        return AppColors.success.withValues(alpha: 0.6);
 
       default:
-        return AppColors.textTertiary;
+        return null;
     }
   }
 
-  /// Get the expected center color for a face.
   String _expectedCenter(String face) {
     switch (face) {
       case 'U': return 'W';
@@ -125,6 +178,14 @@ class StickerOverlayPainter extends CustomPainter {
       case 'L': return 'G';
       default: return 'W';
     }
+  }
+
+  void _drawLabel(Canvas canvas, String text, double x, double y, TextStyle style) {
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, Offset(x - tp.width / 2, y - tp.height / 2));
   }
 
   @override
