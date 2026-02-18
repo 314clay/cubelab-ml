@@ -285,8 +285,10 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
             // Normal case: show solution button or revealed content
             else if (!state.solutionRevealed)
               ElevatedButton(
-                onPressed: () =>
-                    ref.read(cubeScanProvider.notifier).revealSolution(),
+                onPressed: () {
+                  setState(() => _expandedPathIndex = 0);
+                  ref.read(cubeScanProvider.notifier).revealSolution();
+                },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: AppColors.textPrimary,
@@ -369,12 +371,16 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
       confidenceColor = AppColors.error;
     }
 
+    // Display name: use caseName, or "Solved" for solved phase
+    final displayName = result.caseName ??
+        (result.phase == 'solved' ? 'Solved' : 'Unknown Case');
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
           child: Text(
-            result.caseName ?? 'Unknown Case',
+            displayName,
             style: AppTextStyles.h2,
           ),
         ),
