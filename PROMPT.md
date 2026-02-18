@@ -317,26 +317,30 @@ After each fix:
 
 ---
 
-### STEP 8: Build single ML model for 15-sticker classification
-**Goal:** Replace the classical CV pipeline (CubeVision) with a single neural network that takes a cube image and outputs all 15 visible sticker colors.
+### STEP 8: Build single ML model for 27-sticker classification
+**Goal:** Replace the classical CV pipeline (CubeVision) with a single neural network that takes a cube image and outputs all 27 visible sticker colors (3 faces × 9 stickers each).
+
+The CV pipeline only extracts 15 stickers (top 9 + front top row 3 + right top row 3). An ML model has no such limitation — it can learn all 27 visible sticker positions across the Top, Front, and Right faces.
 
 The CV pipeline (hexagon → Y-junction → warp → HSV threshold) achieves 99.4% on fixed-camera renders but ~10% on varied angles. Rather than patching each CV stage, train a CNN that learns the mapping directly.
 
 #### Architecture
 
 **Input:** 224×224 RGB image (resized from 480×480 render)
-**Output:** 15 sticker predictions, each one of 6 colors (W, Y, R, O, G, B)
+**Output:** 27 sticker predictions, each one of 6 colors (W, Y, R, O, G, B)
+
+Sticker order: `U[0-8]` then `F[0-8]` then `R[0-8]` (row-major per face, matching Cube class indexing).
 
 Use a pretrained **ResNet-18** backbone (torchvision) with the final FC layer replaced:
 ```
 ResNet-18 backbone (pretrained=True, frozen early layers)
   → AdaptiveAvgPool → 512-d feature vector
   → FC(512, 256) → ReLU → Dropout(0.3)
-  → FC(256, 90) → reshape to (15, 6)
+  → FC(256, 162) → reshape to (27, 6)
   → per-sticker softmax
 ```
 
-**Loss:** Sum of CrossEntropyLoss across all 15 sticker positions.
+**Loss:** Sum of CrossEntropyLoss across all 27 sticker positions.
 
 **Why ResNet-18:** Small enough for CPU/MPS training (~11M params), pretrained features transfer well to color/shape recognition, well-documented.
 
@@ -355,8 +359,8 @@ All under `ml/src/`:
 
 - Reads from `ml/data/training_renders/` (or any dir with PNG + matching JSON)
 - Each sample: load PNG → resize to 224×224 → normalize with ImageNet stats
-- Label: 15-element tensor of class indices (color_to_idx: W=0, Y=1, R=2, O=3, G=4, B=5)
-- Parse `visible_stickers` from the JSON label
+- Label: 27-element tensor of class indices (color_to_idx: W=0, Y=1, R=2, O=3, G=4, B=5)
+- Parse from JSON: `full_state['U']` (9) + `full_state['F']` (9) + `full_state['R']` (9) = 27 stickers
 - Train/val split: 80/20 by index, deterministic with seed
 - Data augmentation (train only): ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05), RandomHorizontalFlip is **NOT** used (sticker positions are spatial)
 
@@ -373,7 +377,7 @@ python3 ml/src/train_sticker.py --data-dir ml/data/training_renders/ --epochs 30
 - Device: auto-detect (MPS on macOS, CUDA if available, else CPU)
 - Freeze ResNet layers 1-2 for first 5 epochs, then unfreeze all
 - Save best checkpoint by val per-sticker accuracy to `ml/checkpoints/sticker_classifier.pt`
-- Print per-epoch: train loss, val loss, val per-sticker accuracy, val per-image accuracy (all 15 correct)
+- Print per-epoch: train loss, val loss, val per-sticker accuracy, val per-image accuracy (all 27 correct)
 
 **CLI flags:**
 - `--data-dir PATH` — training_renders directory (default: `ml/data/training_renders/`)
@@ -393,13 +397,13 @@ python3 ml/src/evaluate_sticker.py --checkpoint ml/checkpoints/sticker_classifie
 **Output:**
 ```
 === STICKER CLASSIFIER EVALUATION ===
-Per-sticker accuracy: 847/900 = 94.1%
-Per-image accuracy:   48/60 = 80.0%
+Per-sticker accuracy: 1512/1620 = 93.3%
+Per-image accuracy:   42/60 = 70.0%
 
 Per-position accuracy:
-  U0: 95.0%  U1: 96.7%  U2: 93.3%  ...
-  F0: 91.7%  F1: 90.0%  F2: 88.3%
-  R0: 93.3%  R1: 95.0%  R2: 91.7%
+  U0: 95.0%  U1: 96.7%  U2: 93.3%  U3: 95.0%  U4: 98.3%  U5: 93.3%  U6: 91.7%  U7: 95.0%  U8: 93.3%
+  F0: 91.7%  F1: 90.0%  F2: 88.3%  F3: 93.3%  F4: 96.7%  F5: 90.0%  F6: 88.3%  F7: 91.7%  F8: 90.0%
+  R0: 93.3%  R1: 95.0%  R2: 91.7%  R3: 90.0%  R4: 96.7%  R5: 93.3%  R6: 88.3%  R7: 90.0%  R8: 91.7%
 
 Confusion matrix (all positions pooled):
          W    Y    R    O    G    B
@@ -440,7 +444,7 @@ Start with 500 renders. If validation accuracy plateaus below target, generate m
 
 #### Verification (all must pass)
 
-- [ ] `sticker_model.py`: `StickerClassifier` forward pass works on dummy input `(1, 3, 224, 224)` → output shape `(1, 15, 6)`
+- [ ] `sticker_model.py`: `StickerClassifier` forward pass works on dummy input `(1, 3, 224, 224)` → output shape `(1, 27, 6)`
 - [ ] `sticker_dataset.py`: loads training_renders, returns correct tensor shapes
 - [ ] `train_sticker.py`: completes 1 epoch without errors on MPS/CPU
 - [ ] `train_sticker.py`: completes full training, saves checkpoint
