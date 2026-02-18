@@ -79,13 +79,13 @@ class CubeVision:
         top_colors = self._sample_face_warped(hsv_image, faces['top'], warp_size)
         sticker_colors.extend(top_colors)
 
-        # Sample front top row (3 stickers, reversed for camera perspective)
+        # Sample front top row (3 stickers)
         front_colors = self._sample_face_warped(hsv_image, faces['front'], warp_size)
-        sticker_colors.extend(reversed(front_colors[:3]))
+        sticker_colors.extend(front_colors[:3])
 
-        # Sample right top row (3 stickers, reversed)
+        # Sample right top row (3 stickers)
         right_colors = self._sample_face_warped(hsv_image, faces['right'], warp_size)
-        sticker_colors.extend(reversed(right_colors[:3]))
+        sticker_colors.extend(right_colors[:3])
 
         sticker_colors = np.array(sticker_colors)
 
@@ -521,7 +521,35 @@ class CubeVision:
             bottom_two = sorted(sorted_by_y[2:], key=lambda v: v[0])
             return np.array([top_two[0], top_two[1], bottom_two[1], bottom_two[0]])
 
-        top_quad = order_quad_vertices(top_quad)
+        def order_top_face(quad, junction_pt):
+            """Order top face vertices using known geometry.
+
+            The top face diamond has: junction at bottom, non-seam vertex at top,
+            left seam vertex on the left, right seam vertex on the right.
+
+            Empirically verified mapping (matching Cube class U face indexing):
+            TL=top(U[0]), TR=right(U[2]), BR=junction(U[8]), BL=left(U[6]).
+            """
+            pts = list(quad)
+            # Identify junction vertex (closest to junction point)
+            dists = [np.linalg.norm(p - junction_pt) for p in pts]
+            junc_idx = np.argmin(dists)
+            junc = pts.pop(junc_idx)
+
+            # Of remaining 3, the one with lowest Y (highest in image) is the top (non-seam)
+            remaining = sorted(pts, key=lambda v: v[1])
+            top_vertex = remaining[0]
+            sides = remaining[1:]
+
+            # Of the two side vertices, lower X = left, higher X = right
+            sides.sort(key=lambda v: v[0])
+            left_vertex = sides[0]
+            right_vertex = sides[1]
+
+            # TL=top(U[0]), TR=right(U[2]), BR=junction(U[8]), BL=left(U[6])
+            return np.array([top_vertex, right_vertex, junc, left_vertex])
+
+        top_quad = order_top_face(top_quad, junction_point)
         front_quad = order_quad_vertices(front_quad)
         right_quad = order_quad_vertices(right_quad)
 
@@ -563,7 +591,7 @@ class CubeVision:
         warped = cv2.warpPerspective(hsv_image, M, (warp_size, warp_size))
 
         cell_size = warp_size // 3
-        margin = int(cell_size * 0.35)  # 35% margin to stay well within sticker
+        margin = int(cell_size * 0.25)  # 25% margin — balances edge avoidance with coverage
 
         colors = []
         for row in range(3):
@@ -813,9 +841,8 @@ class CubeVision:
                 continue
 
             # Low saturation = White (or gray background)
-            # Higher threshold avoids false-positive colored classifications
-            # from specular highlights bleeding into adjacent stickers
-            if sat < 55:
+            # Blender renders: white stickers have S=0, colored corners go as low as S=38
+            if sat < 30:
                 colors.append('W')
                 continue
 
