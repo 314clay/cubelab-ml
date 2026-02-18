@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -267,13 +265,13 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
                   borderRadius: AppSpacing.cardRadius,
                   border: Border.all(color: AppColors.border),
                 ),
-                child: Column(
+                child: const Column(
                   children: [
-                    const Icon(Icons.check_circle, color: AppColors.success, size: 48),
-                    const SizedBox(height: AppSpacing.md),
+                    Icon(Icons.check_circle, color: AppColors.success, size: 48),
+                    SizedBox(height: AppSpacing.md),
                     Text('Cube is solved!', style: AppTextStyles.h3),
-                    const SizedBox(height: AppSpacing.sm),
-                    const Text(
+                    SizedBox(height: AppSpacing.sm),
+                    Text(
                       'All stickers are in the correct position.',
                       style: AppTextStyles.bodySecondary,
                       textAlign: TextAlign.center,

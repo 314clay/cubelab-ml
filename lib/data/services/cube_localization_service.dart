@@ -89,8 +89,8 @@ class StubCubeLocalizationService implements CubeLocalizationService {
   Future<CubeLocalization?> localize(Uint8List imageBytes) async {
     // Return a fixed cube position centered in the frame
     final regions = <Rect>[];
-    final cellSize = 0.08;
-    final gap = 0.01;
+    const cellSize = 0.08;
+    const gap = 0.01;
 
     // U-face: top-center
     for (int row = 0; row < 3; row++) {
