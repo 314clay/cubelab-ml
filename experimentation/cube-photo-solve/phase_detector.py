@@ -27,6 +27,7 @@ class PhaseDetector:
     PLL = "pll"
     OLL_EDGES_ORIENTED = "oll_edges_oriented"
     OLL = "oll"
+    F2L_LAST_PAIR = "f2l_last_pair"
     F2L_PARTIAL = "f2l_partial"
     UNKNOWN = "unknown"
 
@@ -148,12 +149,7 @@ class PhaseDetector:
         Detect phase from a full Cube object (all 6 faces visible).
         More accurate than detect_phase since we see all stickers.
         """
-        # With full cube access, check directly
-        solved = all(
-            len(set(cube.faces[face])) == 1
-            for face in cube.faces
-        )
-        if solved:
+        if cube.is_solved():
             return PhaseResult(
                 phase=self.SOLVED,
                 applicable_sets=[],
@@ -161,5 +157,52 @@ class PhaseDetector:
                 details={"note": "Cube is fully solved"},
             )
 
-        visible = cube.get_visible_stickers()
-        return self.detect_phase(visible)
+        if cube.is_f2l_solved():
+            # F2L done — determine LL phase
+            if cube.is_ll_edges_oriented():
+                # Check if top face is fully oriented
+                uc = cube.faces['U'][4]
+                top_all_match = all(s == uc for s in cube.faces['U'])
+                if top_all_match:
+                    return PhaseResult(
+                        phase=self.PLL,
+                        applicable_sets=["PLL"],
+                        confidence=1.0,
+                    )
+                return PhaseResult(
+                    phase=self.OLL_EDGES_ORIENTED,
+                    applicable_sets=["COLL", "ZBLL"],
+                    confidence=1.0,
+                )
+            return PhaseResult(
+                phase=self.OLL,
+                applicable_sets=["OLL", "OLLCP"],
+                confidence=1.0,
+            )
+
+        if cube.is_cross_solved():
+            solved_pairs = cube.count_solved_pairs()
+            unsolved = cube.get_unsolved_slots()
+            if solved_pairs == 3:
+                return PhaseResult(
+                    phase=self.F2L_LAST_PAIR,
+                    applicable_sets=["F2L", "ZBLS"],
+                    confidence=1.0,
+                    details={
+                        "solved_pairs": solved_pairs,
+                        "unsolved_slot": unsolved[0],
+                    },
+                )
+            return PhaseResult(
+                phase=self.F2L_PARTIAL,
+                applicable_sets=["F2L"],
+                confidence=1.0,
+                details={"solved_pairs": solved_pairs, "unsolved_slots": unsolved},
+            )
+
+        return PhaseResult(
+            phase=self.F2L_PARTIAL,
+            applicable_sets=[],
+            confidence=0.8,
+            details={"note": "Cross not solved"},
+        )

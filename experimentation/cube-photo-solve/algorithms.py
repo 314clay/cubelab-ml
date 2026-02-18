@@ -107,7 +107,7 @@ PLL_CASES = {
     "R-Perm (a)": "R U' R' U' R U R D R' U' R D' R' U2 R'",
     "R-Perm (b)": "R' U2 R U2 R' F R U R' U' R' F' R2",
     "Y-Perm": "F R U' R' U' R U R' F' R U R' U' R' F R F'",
-    "V-Perm": "R' U R' U' y R' F' R2 U' R' U R' F R F",
+    "V-Perm": "R' U R' U' y R' F' R2 U' R' U R' F R F y'",
     "N-Perm (a)": "R U R' U R U R' F' R U R' U' R' F R2 U' R' U2 R U' R'",
     "N-Perm (b)": "R' U R U' R' F' U' F R U R' F R' F' R U' R",
     "U-Perm (a)": "R2 U R U R' U' R' U' R' U R'",
@@ -129,6 +129,7 @@ ZBLL_CASES = _get_cases_dict("ZBLL")
 OLLCP_CASES = _get_cases_dict("OLLCP")
 F2L_CASES = _get_cases_dict("F2L")
 WV_CASES = _get_cases_dict("WV")
+ZBLS_CASES = _get_cases_dict("ZBLS")
 
 
 def parse_algorithm(alg_string):
@@ -150,6 +151,7 @@ def get_all_algorithm_sets():
         "OLLCP": OLLCP_CASES.copy(),
         "F2L": F2L_CASES.copy(),
         "WV": WV_CASES.copy(),
+        "ZBLS": ZBLS_CASES.copy(),
     }
 
 

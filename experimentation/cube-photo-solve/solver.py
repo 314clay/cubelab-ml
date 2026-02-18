@@ -9,7 +9,7 @@ of that algorithm.
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from algorithms import parse_algorithm
+from algorithms import parse_algorithm, F2L_CASES, ZBLS_CASES
 from phase_detector import PhaseDetector
 from state_resolver import Cube, ExpandedStateResolver
 
@@ -114,8 +114,7 @@ class CubeSolver:
                 visible_stickers, phase_result.phase, paths
             )
 
-        # For F2L partial: limited — just report the phase
-        # F2L solving from 15 stickers is not well-supported
+        # For F2L partial: limited from 15 stickers — use solve_from_cube() instead
 
         # Deduplicate by description
         seen = set()
@@ -345,3 +344,214 @@ class CubeSolver:
                 return all(len(set(f)) == 1 for f in cube.faces.values())
 
         return False
+
+    # ------------------------------------------------------------------
+    # Full-cube solving (supports F2L and ZBLS phases)
+    # ------------------------------------------------------------------
+
+    AUF_SETUPS = ['', 'U', 'U2', "U'"]
+
+    def solve_from_cube(self, cube: 'Cube', max_paths: int = 5) -> 'List[SolvePath]':
+        """Find solving paths from a full cube state.
+
+        Unlike solve() which uses 15 visible stickers, this accepts a full
+        Cube object and can handle F2L-level states via trial-based matching.
+
+        Supports paths like:
+          - F2L → OLL → PLL
+          - ZBLS → ZBLL
+          - ZBLS → COLL → PLL
+          - (plus all existing LL paths)
+        """
+        phase_result = self.phase_detector.detect_phase_full(cube)
+
+        if phase_result.phase in ("solved", "unknown"):
+            return []
+
+        paths = []
+
+        if phase_result.phase == "f2l_last_pair":
+            # Try F2L → LL chains
+            self._find_f2l_solutions(cube, paths)
+            # Try ZBLS → LL chains
+            self._find_zbls_solutions(cube, paths)
+
+        elif phase_result.phase in ("pll", "oll", "oll_edges_oriented"):
+            # Delegate to existing 15-sticker solver for LL phases
+            visible = cube.get_visible_stickers()
+            return self.solve(visible, max_paths=max_paths)
+
+        elif phase_result.phase == "f2l_partial":
+            # Multiple pairs unsolved — can't solve with single F2L alg
+            return []
+
+        # Deduplicate and rank
+        seen = set()
+        unique_paths = []
+        for path in paths:
+            key = path.description
+            if key not in seen:
+                seen.add(key)
+                unique_paths.append(path)
+
+        unique_paths.sort(key=lambda p: p.total_moves)
+        return unique_paths[:max_paths]
+
+    def _try_f2l_alg(self, cube: 'Cube', case_name: str, alg: str,
+                      auf: str) -> 'Optional[Cube]':
+        """Try applying AUF + inverse of an F2L/ZBLS alg. Return resulting cube or None."""
+        solve_alg = inverse_algorithm(alg)
+        test = cube.copy()
+        try:
+            if auf:
+                test.apply_algorithm(auf)
+            test.apply_algorithm(solve_alg)
+        except (ValueError, Exception):
+            return None
+        return test
+
+    def _find_f2l_solutions(self, cube: 'Cube', paths: 'List[SolvePath]'):
+        """Find F2L → LL solving paths by trial.
+
+        For each F2L algorithm × 4 AUF setups, apply the inverse and check
+        if F2L becomes solved. If so, continue with LL solving.
+        """
+        for case_name, alg in F2L_CASES.items():
+            if not alg:
+                continue
+            for auf in self.AUF_SETUPS:
+                result = self._try_f2l_alg(cube, case_name, alg, auf)
+                if result is None or not result.is_f2l_solved():
+                    continue
+
+                # F2L solved — now solve LL
+                f2l_solve = inverse_algorithm(alg)
+                full_f2l = f"{auf} {f2l_solve}".strip() if auf else f2l_solve
+                f2l_moves = len(parse_algorithm(full_f2l))
+
+                f2l_step = SolveStep(
+                    algorithm_set="F2L",
+                    case_name=f"{case_name}" + (f" (AUF {auf})" if auf else ""),
+                    algorithm=full_f2l,
+                    move_count=f2l_moves,
+                    phase_before="f2l_last_pair",
+                    phase_after="",  # filled below
+                )
+
+                # Solve LL from the post-F2L state
+                ll_visible = result.get_visible_stickers()
+                ll_paths = self.solve(ll_visible, max_paths=3)
+
+                if not ll_paths:
+                    # F2L solved the whole cube (unlikely) or no LL match
+                    if result.is_solved():
+                        f2l_step.phase_after = "solved"
+                        paths.append(SolvePath(
+                            steps=[f2l_step],
+                            total_moves=f2l_moves,
+                            description=f"{case_name} → Solved",
+                        ))
+                    continue
+
+                for ll_path in ll_paths:
+                    # Verify full path against original cube
+                    verify = cube.copy()
+                    try:
+                        verify.apply_algorithm(full_f2l)
+                        for s in ll_path.steps:
+                            verify.apply_algorithm(s.algorithm)
+                    except (ValueError, Exception):
+                        continue
+                    if not verify.is_solved():
+                        continue
+
+                    f2l_step_copy = SolveStep(
+                        algorithm_set=f2l_step.algorithm_set,
+                        case_name=f2l_step.case_name,
+                        algorithm=f2l_step.algorithm,
+                        move_count=f2l_step.move_count,
+                        phase_before=f2l_step.phase_before,
+                        phase_after=ll_path.steps[0].phase_before,
+                    )
+                    combined_steps = [f2l_step_copy] + ll_path.steps
+                    total = f2l_moves + ll_path.total_moves
+                    desc = f"{case_name} → {ll_path.description}"
+                    paths.append(SolvePath(
+                        steps=combined_steps,
+                        total_moves=total,
+                        description=desc,
+                    ))
+
+    def _find_zbls_solutions(self, cube: 'Cube', paths: 'List[SolvePath]'):
+        """Find ZBLS → LL solving paths by trial.
+
+        ZBLS solves F2L + orients LL edges. After ZBLS, the cube is in
+        oll_edges_oriented phase → ZBLL or COLL+PLL.
+        """
+        for case_name, alg in ZBLS_CASES.items():
+            if not alg:
+                continue
+            for auf in self.AUF_SETUPS:
+                result = self._try_f2l_alg(cube, case_name, alg, auf)
+                if result is None:
+                    continue
+                # ZBLS postcondition: F2L solved AND LL edges oriented
+                if not result.is_f2l_solved() or not result.is_ll_edges_oriented():
+                    continue
+
+                zbls_solve = inverse_algorithm(alg)
+                full_zbls = f"{auf} {zbls_solve}".strip() if auf else zbls_solve
+                zbls_moves = len(parse_algorithm(full_zbls))
+
+                zbls_step = SolveStep(
+                    algorithm_set="ZBLS",
+                    case_name=f"{case_name}" + (f" (AUF {auf})" if auf else ""),
+                    algorithm=full_zbls,
+                    move_count=zbls_moves,
+                    phase_before="f2l_last_pair",
+                    phase_after="",
+                )
+
+                # After ZBLS: edges oriented → ZBLL, COLL+PLL, or solved
+                ll_visible = result.get_visible_stickers()
+                ll_paths = self.solve(ll_visible, max_paths=3)
+
+                if not ll_paths:
+                    if result.is_solved():
+                        zbls_step.phase_after = "solved"
+                        paths.append(SolvePath(
+                            steps=[zbls_step],
+                            total_moves=zbls_moves,
+                            description=f"{case_name} → Solved",
+                        ))
+                    continue
+
+                for ll_path in ll_paths:
+                    # Verify full path against original cube
+                    verify = cube.copy()
+                    try:
+                        verify.apply_algorithm(full_zbls)
+                        for s in ll_path.steps:
+                            verify.apply_algorithm(s.algorithm)
+                    except (ValueError, Exception):
+                        continue
+                    if not verify.is_solved():
+                        continue
+
+                    zbls_step_copy = SolveStep(
+                        algorithm_set=zbls_step.algorithm_set,
+                        case_name=zbls_step.case_name,
+                        algorithm=zbls_step.algorithm,
+                        move_count=zbls_step.move_count,
+                        phase_before=zbls_step.phase_before,
+                        phase_after=ll_path.steps[0].phase_before,
+                    )
+                    combined_steps = [zbls_step_copy] + ll_path.steps
+                    total = zbls_moves + ll_path.total_moves
+                    desc = f"{case_name} (ZBLS) → {ll_path.description}"
+                    paths.append(SolvePath(
+                        steps=combined_steps,
+                        total_moves=total,
+                        description=desc,
+                    ))
+

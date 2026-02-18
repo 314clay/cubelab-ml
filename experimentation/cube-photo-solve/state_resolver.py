@@ -65,6 +65,85 @@ class Cube:
 
         return visible
 
+    # Solved colors for reference
+    SOLVED_COLORS = {'U': 'W', 'D': 'Y', 'F': 'R', 'B': 'O', 'L': 'G', 'R': 'B'}
+
+    def is_solved(self) -> bool:
+        """Check if the cube is fully solved."""
+        return all(len(set(f)) == 1 for f in self.faces.values())
+
+    def is_cross_solved(self) -> bool:
+        """Check if the D-layer cross is solved (D center + 4 D-layer edges)."""
+        d = self.faces['D']
+        dc = d[4]  # D center
+        # D edge stickers must match D center
+        if not (d[1] == dc and d[3] == dc and d[5] == dc and d[7] == dc):
+            return False
+        # Adjacent edge stickers must match their face centers
+        if self.faces['F'][7] != self.faces['F'][4]:
+            return False
+        if self.faces['R'][7] != self.faces['R'][4]:
+            return False
+        if self.faces['B'][7] != self.faces['B'][4]:
+            return False
+        if self.faces['L'][7] != self.faces['L'][4]:
+            return False
+        return True
+
+    def _is_pair_solved(self, slot: str) -> bool:
+        """Check if an F2L corner-edge pair is solved in the given slot.
+
+        Slots: 'FR' (front-right), 'FL' (front-left), 'BR' (back-right), 'BL' (back-left)
+        A pair is solved when the corner and edge in that D-layer slot
+        have stickers matching their adjacent face centers.
+        """
+        if slot == 'FR':
+            # Corner at D[2]/F[8]/R[6], Edge at F[5]/R[3]
+            return (self.faces['F'][8] == self.faces['F'][4] and
+                    self.faces['R'][6] == self.faces['R'][4] and
+                    self.faces['D'][2] == self.faces['D'][4] and
+                    self.faces['F'][5] == self.faces['F'][4] and
+                    self.faces['R'][3] == self.faces['R'][4])
+        elif slot == 'FL':
+            # Corner at D[0]/F[6]/L[8], Edge at F[3]/L[5]
+            return (self.faces['F'][6] == self.faces['F'][4] and
+                    self.faces['L'][8] == self.faces['L'][4] and
+                    self.faces['D'][0] == self.faces['D'][4] and
+                    self.faces['F'][3] == self.faces['F'][4] and
+                    self.faces['L'][5] == self.faces['L'][4])
+        elif slot == 'BR':
+            # Corner at D[8]/B[6]/R[8], Edge at B[3]/R[5]
+            return (self.faces['B'][6] == self.faces['B'][4] and
+                    self.faces['R'][8] == self.faces['R'][4] and
+                    self.faces['D'][8] == self.faces['D'][4] and
+                    self.faces['B'][3] == self.faces['B'][4] and
+                    self.faces['R'][5] == self.faces['R'][4])
+        elif slot == 'BL':
+            # Corner at D[6]/B[8]/L[6], Edge at B[5]/L[3]
+            return (self.faces['B'][8] == self.faces['B'][4] and
+                    self.faces['L'][6] == self.faces['L'][4] and
+                    self.faces['D'][6] == self.faces['D'][4] and
+                    self.faces['B'][5] == self.faces['B'][4] and
+                    self.faces['L'][3] == self.faces['L'][4])
+        return False
+
+    def count_solved_pairs(self) -> int:
+        """Count how many F2L pairs are solved."""
+        return sum(1 for slot in ('FR', 'FL', 'BR', 'BL') if self._is_pair_solved(slot))
+
+    def is_f2l_solved(self) -> bool:
+        """Check if the entire first two layers are solved (cross + all 4 pairs)."""
+        return self.is_cross_solved() and self.count_solved_pairs() == 4
+
+    def get_unsolved_slots(self) -> list:
+        """Return list of unsolved F2L slot names."""
+        return [slot for slot in ('FR', 'FL', 'BR', 'BL') if not self._is_pair_solved(slot)]
+
+    def is_ll_edges_oriented(self) -> bool:
+        """Check if last layer edges are oriented (U-face sticker matches U center)."""
+        uc = self.faces['U'][4]
+        return all(self.faces['U'][i] == uc for i in (1, 3, 5, 7))
+
     def apply_move(self, move: str):
         """
         Apply a single move to the cube.
@@ -203,10 +282,10 @@ class Cube:
         self.faces['R'][0], self.faces['R'][3], self.faces['R'][6] = temp
 
     def _move_B(self):
-        """B move: Back face clockwise."""
+        """B move: Back face clockwise (CW when viewed from behind)."""
         self._rotate_face_cw('B')
 
-        # Cycle edges
+        # Cycle edges: R→U, D(rev)→R, L→D, U(rev)→L
         temp = [self.faces['U'][0], self.faces['U'][1], self.faces['U'][2]]
         self.faces['U'][0], self.faces['U'][1], self.faces['U'][2] = \
             self.faces['R'][2], self.faces['R'][5], self.faces['R'][8]
@@ -214,7 +293,8 @@ class Cube:
             self.faces['D'][8], self.faces['D'][7], self.faces['D'][6]
         self.faces['D'][6], self.faces['D'][7], self.faces['D'][8] = \
             self.faces['L'][0], self.faces['L'][3], self.faces['L'][6]
-        self.faces['L'][0], self.faces['L'][3], self.faces['L'][6] = temp
+        self.faces['L'][0], self.faces['L'][3], self.faces['L'][6] = \
+            temp[2], temp[1], temp[0]
 
     def _move_M(self):
         """M move: Middle layer (between L and R), same direction as L.
