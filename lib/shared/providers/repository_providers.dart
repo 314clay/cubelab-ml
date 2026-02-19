@@ -2,12 +2,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:cubelab/data/repositories/algorithm_repository.dart';
 import 'package:cubelab/data/repositories/cross_trainer_repository.dart';
+import 'package:cubelab/data/repositories/cube_scan_repository.dart';
 import 'package:cubelab/data/repositories/daily_challenge_repository.dart';
 import 'package:cubelab/data/repositories/leaderboard_repository.dart';
 import 'package:cubelab/data/repositories/profile_repository.dart';
 import 'package:cubelab/data/repositories/timer_repository.dart';
 import 'package:cubelab/data/repositories/user_repository.dart';
 
+import 'package:cubelab/data/stubs/stub_cube_scan_repository.dart';
 import 'package:cubelab/data/stubs/stub_profile_repository.dart';
 import 'package:cubelab/data/supabase/supabase_algorithm_repository.dart';
 import 'package:cubelab/data/supabase/supabase_cross_trainer_repository.dart';
@@ -51,6 +53,12 @@ final userRepositoryProvider = Provider<UserRepository>((ref) {
 /// Uses Supabase for cloud persistence with real-time sync
 final timerRepositoryProvider = Provider<TimerRepository>((ref) {
   return SupabaseTimerRepository(ref.watch(supabaseClientProvider));
+});
+
+/// Cube scan repository provider
+/// Uses stub for now, swap for Supabase later
+final cubeScanRepositoryProvider = Provider<CubeScanRepository>((ref) {
+  return StubCubeScanRepository();
 });
 
 /// Profile repository provider
