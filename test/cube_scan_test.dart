@@ -1,6 +1,10 @@
+import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart' as http_testing;
 import 'package:cubelab/data/models/algorithm.dart';
 import 'package:cubelab/data/models/algorithm_review.dart';
 import 'package:cubelab/data/models/algorithm_solve.dart';
@@ -17,6 +21,8 @@ import 'package:cubelab/data/models/user_algorithm.dart';
 import 'package:cubelab/data/models/zbll_subset.dart';
 import 'package:cubelab/data/repositories/algorithm_repository.dart';
 import 'package:cubelab/data/services/cube_analysis_service.dart';
+import 'package:cubelab/data/services/cube_localization_service.dart';
+import 'package:cubelab/data/services/remote_cube_analysis_service.dart';
 import 'package:cubelab/data/services/stub_cube_analysis_service.dart';
 import 'package:cubelab/data/stubs/stub_cube_scan_repository.dart';
 import 'package:cubelab/features/cube_scan/providers/cube_scan_providers.dart';
@@ -723,6 +729,128 @@ void main() {
       expect(updated.phase, equals(CubeScanPhase.results));
       expect(updated.isKnownAlgorithm, isTrue);
       expect(updated.solutionRevealed, isTrue);
+    });
+  });
+
+  // ============ CubeLocalization Tests ============
+
+  group('CubeLocalization', () {
+    test('fromJson/toJson roundtrip', () {
+      const localization = CubeLocalization(
+        cubeBounds: Rect.fromLTWH(0.15, 0.1, 0.7, 0.7),
+        stickerRegions: [
+          Rect.fromLTWH(0.35, 0.15, 0.08, 0.08),
+          Rect.fromLTWH(0.44, 0.15, 0.08, 0.08),
+        ],
+        faceCorners: [
+          [Offset(0.35, 0.15), Offset(0.62, 0.15)],
+        ],
+        confidence: 0.95,
+      );
+
+      final json = localization.toJson();
+      final parsed = CubeLocalization.fromJson(json);
+
+      expect(parsed.cubeBounds.left, closeTo(0.15, 0.001));
+      expect(parsed.cubeBounds.width, closeTo(0.7, 0.001));
+      expect(parsed.stickerRegions.length, equals(2));
+      expect(parsed.faceCorners.length, equals(1));
+      expect(parsed.faceCorners[0].length, equals(2));
+      expect(parsed.confidence, equals(0.95));
+    });
+  });
+
+  group('StubCubeLocalizationService', () {
+    test('localize returns 27 sticker regions', () async {
+      final service = StubCubeLocalizationService();
+      final result = await service.localize(Uint8List(0));
+
+      expect(result, isNotNull);
+      expect(result!.stickerRegions.length, equals(27));
+      expect(result.faceCorners.length, equals(3));
+      expect(result.confidence, greaterThan(0));
+    });
+  });
+
+  // ============ RemoteCubeAnalysisService Tests ============
+
+  group('RemoteCubeAnalysisService', () {
+    test('analyze parses successful response', () async {
+      final mockClient = http_testing.MockClient((request) async {
+        expect(request.url.path, equals('/analyze'));
+        final body = utf8.encode(jsonEncode(_testOllResult.toJson()));
+        return http.Response.bytes(
+          body,
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+
+      final service = RemoteCubeAnalysisService(
+        baseUrl: 'http://localhost:8000',
+        client: mockClient,
+      );
+
+      final result = await service.analyze(Uint8List.fromList([1, 2, 3]));
+      expect(result.phase, equals('oll'));
+      expect(result.caseName, equals('OLL 27'));
+      expect(result.confidence, equals(0.97));
+    });
+
+    test('analyze throws on non-200 response', () async {
+      final mockClient = http_testing.MockClient((request) async {
+        return http.Response('Internal Server Error', 500);
+      });
+
+      final service = RemoteCubeAnalysisService(
+        baseUrl: 'http://localhost:8000',
+        client: mockClient,
+      );
+
+      expect(
+        () => service.analyze(Uint8List(0)),
+        throwsException,
+      );
+    });
+
+    test('isAvailable returns true on 200', () async {
+      final mockClient = http_testing.MockClient((request) async {
+        expect(request.url.path, equals('/health'));
+        return http.Response('OK', 200);
+      });
+
+      final service = RemoteCubeAnalysisService(
+        baseUrl: 'http://localhost:8000',
+        client: mockClient,
+      );
+
+      expect(await service.isAvailable(), isTrue);
+    });
+
+    test('isAvailable returns false on error', () async {
+      final mockClient = http_testing.MockClient((request) async {
+        return http.Response('Not Found', 404);
+      });
+
+      final service = RemoteCubeAnalysisService(
+        baseUrl: 'http://localhost:8000',
+        client: mockClient,
+      );
+
+      expect(await service.isAvailable(), isFalse);
+    });
+
+    test('isAvailable returns false on network failure', () async {
+      final mockClient = http_testing.MockClient((request) async {
+        throw Exception('Connection refused');
+      });
+
+      final service = RemoteCubeAnalysisService(
+        baseUrl: 'http://localhost:8000',
+        client: mockClient,
+      );
+
+      expect(await service.isAvailable(), isFalse);
     });
   });
 }
