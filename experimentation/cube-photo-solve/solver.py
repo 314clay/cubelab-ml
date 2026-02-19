@@ -11,7 +11,7 @@ from typing import List, Optional
 
 from algorithms import parse_algorithm, F2L_CASES, ZBLS_CASES
 from phase_detector import PhaseDetector
-from state_resolver import Cube, ExpandedStateResolver
+from state_resolver import Cube, ExpandedStateResolver, DirectResolver
 
 
 @dataclass
@@ -54,9 +54,32 @@ def inverse_algorithm(alg_string: str) -> str:
 class CubeSolver:
     """Find multiple algorithm paths from a cube state to solved."""
 
-    def __init__(self, sets=None):
-        self.resolver = ExpandedStateResolver(sets=sets)
+    def __init__(self, sets=None, use_direct=False):
+        if use_direct:
+            # DirectResolver handles OLL/PLL with fast pattern matching.
+            # Fall back to ExpandedStateResolver for other sets (COLL, ZBLL, OLLCP,
+            # ELL) and the combined OLL_PLL table.
+            self.resolver = DirectResolver()
+            all_sets = sets or ExpandedStateResolver.DEFAULT_SETS
+            remaining = [s for s in all_sets if s not in ('OLL', 'PLL')]
+            # Include OLL+PLL in extended resolver so the combined OLL_PLL
+            # table gets built for two-step combined lookups.
+            if 'OLL' in all_sets and 'PLL' in all_sets:
+                remaining = ['OLL', 'PLL'] + remaining
+            self._extended_resolver = (
+                ExpandedStateResolver(sets=remaining) if remaining else None
+            )
+        else:
+            self.resolver = ExpandedStateResolver(sets=sets)
+            self._extended_resolver = None
         self.phase_detector = PhaseDetector()
+
+    def _lookup(self, visible_stickers: List[str], set_name: str = None) -> List:
+        """Look up stickers, routing to the appropriate resolver."""
+        matches = self.resolver.lookup(visible_stickers, set_name=set_name)
+        if not matches and self._extended_resolver and set_name:
+            matches = self._extended_resolver.lookup(visible_stickers, set_name=set_name)
+        return matches
 
     def solve(self, visible_stickers: List[str], max_paths: int = 5) -> List[SolvePath]:
         """
@@ -156,7 +179,7 @@ class CubeSolver:
                                             phase_before: str,
                                             paths: List[SolvePath]):
         """Find solutions using the combined OLL×PLL table."""
-        matches = self.resolver.lookup(visible_stickers, set_name="OLL_PLL")
+        matches = self._lookup(visible_stickers, set_name="OLL_PLL")
         for match in matches:
             oll_alg = match.get('oll_algorithm', '')
             pll_alg = match.get('pll_algorithm', '')
@@ -224,7 +247,7 @@ class CubeSolver:
                                  set_name: str, phase_before: str,
                                  paths: List[SolvePath]):
         """Find one-step solutions by looking up in a table and inverting."""
-        matches = self.resolver.lookup(visible_stickers, set_name=set_name)
+        matches = self._lookup(visible_stickers, set_name=set_name)
         for match in matches:
             scramble_alg = match['algorithm']
             if not scramble_alg:
@@ -256,7 +279,7 @@ class CubeSolver:
                                    paths: List[SolvePath],
                                    second_set: str = "PLL"):
         """Find two-step solutions: first_set → second_set (default PLL)."""
-        matches = self.resolver.lookup(visible_stickers, set_name=first_set)
+        matches = self._lookup(visible_stickers, set_name=first_set)
         for match in matches:
             scramble_alg = match['algorithm']
             if not scramble_alg:
@@ -289,7 +312,7 @@ class CubeSolver:
             elif result_phase.phase in ("pll", "ell") or second_set in result_phase.applicable_sets:
                 # Need second step — look up
                 result_visible = cube.get_visible_stickers()
-                second_matches = self.resolver.lookup(result_visible, set_name=second_set)
+                second_matches = self._lookup(result_visible, set_name=second_set)
                 for second_match in second_matches:
                     second_scramble = second_match['algorithm']
                     if not second_scramble:
@@ -350,7 +373,7 @@ class CubeSolver:
         """
         # Find the original scramble algorithm from the first step
         first_step = path.steps[0]
-        first_matches = self.resolver.lookup(
+        first_matches = self._lookup(
             visible_stickers, set_name=first_step.algorithm_set
         )
 

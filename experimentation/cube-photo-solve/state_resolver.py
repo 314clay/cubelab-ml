@@ -809,6 +809,245 @@ class ExpandedStateResolver:
         return matches[:n]
 
 
+class DirectResolver:
+    """
+    Direct pattern-matching resolver for OLL and PLL case identification.
+
+    Instead of building a brute-force lookup table of all OLL×PLL×AUF
+    combinations (~4,956 entries), this resolver identifies cases by
+    analyzing sticker patterns directly—the way a human speedcuber does.
+
+    OLL identification: U-face white mask (9 bools) + actual side sticker colors (12 values)
+    PLL identification: Relative color encoding of 12 side stickers
+
+    Supports both:
+    - Full-cube identification via identify_oll/identify_pll/identify_case
+    - 15-sticker lookup via lookup() for backward compatibility with CubeSolver
+    """
+
+    AUF_ROTATIONS = ['', 'y', 'y2', "y'"]
+
+    def __init__(self):
+        # Pattern tables for full-cube identification
+        self._oll_patterns = {}   # (u_mask, side_colors) -> (name, alg)
+        self._pll_patterns = {}   # relative_encoding -> (name, alg)
+
+        # 15-sticker lookup tables for backward compatibility
+        self.tables: Dict[str, Dict[str, Dict]] = {}
+
+        self._build_tables()
+
+    @staticmethod
+    def _relative_encode(stickers: List[str]) -> str:
+        """Encode sticker colors as a relative pattern (A, B, C, ...).
+
+        Maps colors to labels in order of first appearance, making the
+        encoding independent of which actual colors are present.
+        E.g., ['R','R','B','O','G','R'] -> 'AABCDA'
+        """
+        mapping = {}
+        next_label = 0
+        result = []
+        for s in stickers:
+            if s not in mapping:
+                mapping[s] = chr(ord('A') + next_label)
+                next_label += 1
+            result.append(mapping[s])
+        return ''.join(result)
+
+    def _build_tables(self):
+        """Build pattern tables and 15-sticker lookup tables from algorithms."""
+        self.tables['OLL'] = {}
+        self.tables['PLL'] = {}
+
+        # OLL patterns
+        for name, alg in OLL_CASES.items():
+            if not alg:
+                continue
+            cube = Cube()
+            cube.apply_algorithm(alg)
+
+            # Full-cube pattern key: U-face white mask + actual side colors
+            u_mask = tuple(s == 'W' for s in cube.faces['U'])
+            sides = tuple(cube.faces['F'][:3] + cube.faces['R'][:3] +
+                          cube.faces['B'][:3] + cube.faces['L'][:3])
+            self._oll_patterns[(u_mask, sides)] = (name, alg)
+
+            # 15-sticker entries for each AUF rotation
+            for rotation in self.AUF_ROTATIONS:
+                rotated = cube.copy()
+                if rotation:
+                    rotated.apply_algorithm(rotation)
+                visible = rotated.get_visible_stickers()
+                key = ''.join(visible)
+                if key not in self.tables['OLL']:
+                    self.tables['OLL'][key] = {
+                        'set': 'OLL',
+                        'case': name,
+                        'algorithm': alg,
+                        'rotation': rotation,
+                        'visible_stickers': visible,
+                    }
+
+        # PLL patterns
+        for name, alg in PLL_CASES.items():
+            if not alg:
+                continue
+            cube = Cube()
+            cube.apply_algorithm(alg)
+
+            # Full-cube pattern key
+            sides = (cube.faces['F'][:3] + cube.faces['R'][:3] +
+                     cube.faces['B'][:3] + cube.faces['L'][:3])
+            encoding = self._relative_encode(sides)
+            self._pll_patterns[encoding] = (name, alg)
+
+            # 15-sticker entries for each AUF rotation
+            for rotation in self.AUF_ROTATIONS:
+                rotated = cube.copy()
+                if rotation:
+                    rotated.apply_algorithm(rotation)
+                visible = rotated.get_visible_stickers()
+                key = ''.join(visible)
+                if key not in self.tables['PLL']:
+                    self.tables['PLL'][key] = {
+                        'set': 'PLL',
+                        'case': name,
+                        'algorithm': alg,
+                        'rotation': rotation,
+                        'visible_stickers': visible,
+                    }
+
+    def identify_oll(self, cube: Cube) -> Tuple[Optional[str], Optional[str], str]:
+        """Identify OLL case from a full Cube object.
+
+        Tries all 4 AUF rotations (U, U', U2, none) to find a match.
+
+        Returns:
+            (case_name, algorithm, auf_rotation) or (None, None, '') if no match.
+        """
+        for auf in ['', 'U', 'U2', "U'"]:
+            test = cube.copy()
+            if auf:
+                test.apply_algorithm(auf)
+            u_mask = tuple(s == 'W' for s in test.faces['U'])
+            sides = tuple(test.faces['F'][:3] + test.faces['R'][:3] +
+                          test.faces['B'][:3] + test.faces['L'][:3])
+            key = (u_mask, sides)
+            if key in self._oll_patterns:
+                name, alg = self._oll_patterns[key]
+                return name, alg, auf
+        return None, None, ''
+
+    def identify_pll(self, cube: Cube) -> Tuple[Optional[str], Optional[str], str]:
+        """Identify PLL case from a full Cube object.
+
+        Precondition: U-face should be all one color (OLL solved).
+        Tries all 4 AUF rotations to find a match.
+
+        Returns:
+            (case_name, algorithm, auf_rotation) or (None, None, '') if no match.
+        """
+        for auf in ['', 'U', 'U2', "U'"]:
+            test = cube.copy()
+            if auf:
+                test.apply_algorithm(auf)
+            sides = (test.faces['F'][:3] + test.faces['R'][:3] +
+                     test.faces['B'][:3] + test.faces['L'][:3])
+            encoding = self._relative_encode(sides)
+            if encoding in self._pll_patterns:
+                name, alg = self._pll_patterns[encoding]
+                return name, alg, auf
+        # Check if already solved (PLL skip)
+        uc = cube.faces['U'][4]
+        if all(s == uc for s in cube.faces['U']):
+            side_faces = ['F', 'R', 'B', 'L']
+            if all(cube.faces[f][0] == cube.faces[f][1] == cube.faces[f][2]
+                   for f in side_faces):
+                return 'Solved', '', ''
+        return None, None, ''
+
+    def identify_case(self, cube: Cube) -> Tuple[str, Optional[str], Optional[str], str]:
+        """Identify the current LL case (OLL or PLL) from a full Cube.
+
+        Returns:
+            (phase, case_name, algorithm, auf_rotation)
+            phase is 'OLL', 'PLL', or 'solved'.
+        """
+        uc = cube.faces['U'][4]
+        u_all_match = all(s == uc for s in cube.faces['U'])
+
+        if u_all_match:
+            name, alg, auf = self.identify_pll(cube)
+            if name == 'Solved':
+                return 'solved', 'Solved', '', ''
+            if name:
+                return 'PLL', name, alg, auf
+            return 'PLL', None, None, ''
+        else:
+            name, alg, auf = self.identify_oll(cube)
+            if name:
+                return 'OLL', name, alg, auf
+            return 'OLL', None, None, ''
+
+    def lookup(self, detected_stickers: List[str],
+               set_name: str = None) -> List[Dict]:
+        """Look up case by 15 visible stickers.
+
+        Compatible with ExpandedStateResolver.lookup() interface.
+        Supports set_name='OLL' and 'PLL'.
+
+        Args:
+            detected_stickers: 15-element list of colors.
+            set_name: 'OLL', 'PLL', or None (search both).
+
+        Returns:
+            List of matching entries.
+        """
+        if len(detected_stickers) != 15:
+            return []
+
+        visible_key = ''.join(detected_stickers)
+        matches = []
+
+        tables_to_search = (
+            {set_name: self.tables[set_name]}
+            if set_name and set_name in self.tables
+            else self.tables
+        )
+
+        for sname, table in tables_to_search.items():
+            if visible_key in table:
+                matches.append(table[visible_key])
+
+        return matches
+
+    def find_closest_matches(self, detected_stickers: List[str],
+                              set_name: str = None, n: int = 5,
+                              max_diff: int = 3) -> List[Tuple[Dict, int]]:
+        """Find closest matches within max_diff Hamming distance."""
+        if len(detected_stickers) != 15:
+            return []
+
+        visible_key = ''.join(detected_stickers)
+        matches = []
+
+        tables_to_search = (
+            {set_name: self.tables[set_name]}
+            if set_name and set_name in self.tables
+            else self.tables
+        )
+
+        for sname, table in tables_to_search.items():
+            for stored_key, info in table.items():
+                diff = sum(c1 != c2 for c1, c2 in zip(visible_key, stored_key))
+                if diff <= max_diff:
+                    matches.append((info, diff))
+
+        matches.sort(key=lambda x: x[1])
+        return matches[:n]
+
+
 if __name__ == "__main__":
     print("Testing StateResolver...")
     resolver = StateResolver()

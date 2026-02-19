@@ -100,11 +100,15 @@ def _get_resolver():
 
 
 def _get_solver():
-    """Lazily create and cache the CubeSolver (expensive — builds lookup tables)."""
+    """Lazily create and cache the CubeSolver.
+
+    Uses DirectResolver for fast OLL/PLL pattern matching with fallback
+    to ExpandedStateResolver for COLL/ZBLL/ELL/OLLCP.
+    """
     global _solver_cache
     if _solver_cache is None:
         from solver import CubeSolver
-        _solver_cache = CubeSolver()
+        _solver_cache = CubeSolver(use_direct=True)
     return _solver_cache
 
 

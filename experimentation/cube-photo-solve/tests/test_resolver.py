@@ -9,7 +9,8 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from state_resolver import Cube, StateResolver
+from state_resolver import Cube, StateResolver, DirectResolver
+from algorithms import OLL_CASES, PLL_CASES
 
 
 class TestCube:
@@ -193,6 +194,116 @@ class TestStateResolver:
         # Differences should be in ascending order
         diffs = [diff for _, diff in closest]
         assert diffs == sorted(diffs)
+
+
+class TestDirectResolver:
+    """Test suite for DirectResolver."""
+
+    @pytest.fixture(scope="class")
+    def resolver(self):
+        return DirectResolver()
+
+    def test_initialization(self, resolver):
+        """DirectResolver builds compact pattern tables."""
+        assert len(resolver._oll_patterns) > 0
+        assert len(resolver._pll_patterns) > 0
+        assert len(resolver.tables['OLL']) > 0
+        assert len(resolver.tables['PLL']) > 0
+
+    def test_oll_identification_all_cases(self, resolver):
+        """Every OLL case is identified correctly from its scrambled state."""
+        # Known duplicate pairs: OLL 26 = Anti-Sune, OLL 27 = Sune
+        equivalent = {
+            'OLL 26': 'Anti-Sune', 'Anti-Sune': 'OLL 26',
+            'OLL 27': 'Sune', 'Sune': 'OLL 27',
+        }
+        for name, alg in OLL_CASES.items():
+            if not alg:
+                continue
+            cube = Cube()
+            cube.apply_algorithm(alg)
+            found, _, _ = resolver.identify_oll(cube)
+            assert found == name or found == equivalent.get(name), \
+                f"Expected {name}, got {found}"
+
+    def test_pll_identification_all_cases(self, resolver):
+        """Every PLL case is identified correctly from its scrambled state."""
+        # U-Perm (a) and (b) are the same permutation from different angles
+        equivalent = {
+            'U-Perm (a)': 'U-Perm (b)', 'U-Perm (b)': 'U-Perm (a)',
+        }
+        for name, alg in PLL_CASES.items():
+            if not alg:
+                continue
+            cube = Cube()
+            cube.apply_algorithm(alg)
+            found, _, _ = resolver.identify_pll(cube)
+            assert found == name or found == equivalent.get(name), \
+                f"Expected {name}, got {found}"
+
+    def test_identify_case_phases(self, resolver):
+        """Phase detection via identify_case is correct."""
+        # Solved
+        phase, _, _, _ = resolver.identify_case(Cube())
+        assert phase == 'solved'
+
+        # OLL state
+        cube = Cube()
+        cube.apply_algorithm("R U R' U R U2 R'")  # Sune
+        phase, name, _, _ = resolver.identify_case(cube)
+        assert phase == 'OLL'
+        assert name is not None
+
+        # PLL state
+        cube = Cube()
+        cube.apply_algorithm("R U R' U' R' F R2 U' R' U' R U R' F'")  # T-Perm
+        phase, name, _, _ = resolver.identify_case(cube)
+        assert phase == 'PLL'
+        assert name is not None
+
+    def test_lookup_parity_oll(self, resolver):
+        """15-sticker OLL lookup matches for all cases × 4 rotations."""
+        auf_rotations = ['', 'y', 'y2', "y'"]
+        for name, alg in OLL_CASES.items():
+            if not alg:
+                continue
+            cube = Cube()
+            cube.apply_algorithm(alg)
+            for rot in auf_rotations:
+                test = cube.copy()
+                if rot:
+                    test.apply_algorithm(rot)
+                visible = test.get_visible_stickers()
+                matches = resolver.lookup(visible, set_name='OLL')
+                assert len(matches) > 0, \
+                    f"No lookup match for {name} rotation={rot}"
+
+    def test_lookup_parity_pll(self, resolver):
+        """15-sticker PLL lookup matches for all cases × 4 rotations."""
+        auf_rotations = ['', 'y', 'y2', "y'"]
+        for name, alg in PLL_CASES.items():
+            if not alg:
+                continue
+            cube = Cube()
+            cube.apply_algorithm(alg)
+            for rot in auf_rotations:
+                test = cube.copy()
+                if rot:
+                    test.apply_algorithm(rot)
+                visible = test.get_visible_stickers()
+                matches = resolver.lookup(visible, set_name='PLL')
+                assert len(matches) > 0, \
+                    f"No lookup match for {name} rotation={rot}"
+
+    def test_lookup_invalid_input(self, resolver):
+        """Lookup with wrong-length input returns empty list."""
+        assert resolver.lookup(['W'] * 10) == []
+
+    def test_solved_cube_lookup(self, resolver):
+        """Solved cube has no OLL match (it's solved, not an OLL state)."""
+        visible = Cube().get_visible_stickers()
+        oll_matches = resolver.lookup(visible, set_name='OLL')
+        assert len(oll_matches) == 0
 
 
 if __name__ == "__main__":
