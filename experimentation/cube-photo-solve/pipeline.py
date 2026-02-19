@@ -301,7 +301,11 @@ def test_val_split(data_dir, checkpoint_path, device='cpu'):
     model, color_classes = load_ml_model(checkpoint_path, device)
     recon = StateReconstructor()
 
-    dataset = StickerDataset(data_dir, split='val', augment=False)
+    # Support comma-separated data dirs
+    data_dirs = [d.strip() for d in data_dir.split(',')]
+    data_dir_arg = data_dirs if len(data_dirs) > 1 else data_dirs[0]
+
+    dataset = StickerDataset(data_dir_arg, split='val', augment=False)
     print(f"Validation samples: {len(dataset)}")
 
     total = 0
@@ -336,8 +340,8 @@ def test_val_split(data_dir, checkpoint_path, device='cpu'):
                 recon_ok += 1
 
                 # Check if full state matches ground truth
-                json_file = dataset.samples[i]
-                json_path = os.path.join(data_dir, json_file)
+                sample_dir, json_file = dataset.samples[i]
+                json_path = os.path.join(sample_dir, json_file)
                 with open(json_path) as f:
                     gt_data = json.load(f)
                 gt_state = gt_data['full_state']

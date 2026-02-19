@@ -21,7 +21,8 @@ IMAGENET_STD = [0.229, 0.224, 0.225]
 
 
 class StickerDataset(Dataset):
-    def __init__(self, data_dir, split='train', seed=42, val_ratio=0.2, augment=True):
+    def __init__(self, data_dir, split='train', seed=42, val_ratio=0.2, augment=True,
+                 whitelist_path=None):
         """
         Args:
             data_dir: path (str) or list of paths to directories with PNG + JSON pairs
@@ -29,6 +30,7 @@ class StickerDataset(Dataset):
             seed: random seed for deterministic split
             val_ratio: fraction of data for validation
             augment: whether to apply data augmentation (train only)
+            whitelist_path: optional TSV file of (dir, json_filename) pairs to include
         """
         if isinstance(data_dir, str):
             data_dirs = [data_dir]
@@ -37,13 +39,32 @@ class StickerDataset(Dataset):
 
         # Collect all (directory, json_filename) pairs
         all_samples = []
-        for d in data_dirs:
-            jsons = sorted(
-                f for f in os.listdir(d)
-                if f.endswith('.json') and f != 'manifest.json'
-            )
-            for j in jsons:
-                all_samples.append((d, j))
+
+        if whitelist_path:
+            # Load only whitelisted samples
+            allowed = set()
+            with open(whitelist_path) as wf:
+                for line in wf:
+                    line = line.strip()
+                    if line:
+                        parts = line.split('\t')
+                        allowed.add((parts[0], parts[1]))
+            for d in data_dirs:
+                jsons = sorted(
+                    f for f in os.listdir(d)
+                    if f.endswith('.json') and f != 'manifest.json'
+                )
+                for j in jsons:
+                    if (d, j) in allowed:
+                        all_samples.append((d, j))
+        else:
+            for d in data_dirs:
+                jsons = sorted(
+                    f for f in os.listdir(d)
+                    if f.endswith('.json') and f != 'manifest.json'
+                )
+                for j in jsons:
+                    all_samples.append((d, j))
 
         # Deterministic train/val split by index
         import random

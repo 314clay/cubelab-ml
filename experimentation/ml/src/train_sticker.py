@@ -101,6 +101,8 @@ def main():
     parser.add_argument('--device', type=str, default='auto')
     parser.add_argument('--checkpoint', type=str, default='ml/checkpoints/sticker_classifier.pt')
     parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--whitelist', type=str, default=None,
+                        help='TSV whitelist file to filter samples')
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -113,8 +115,10 @@ def main():
     data_dir = data_dirs if len(data_dirs) > 1 else data_dirs[0]
 
     # Datasets
-    train_ds = StickerDataset(data_dir, split='train', seed=args.seed)
-    val_ds = StickerDataset(data_dir, split='val', seed=args.seed, augment=False)
+    train_ds = StickerDataset(data_dir, split='train', seed=args.seed,
+                              whitelist_path=args.whitelist)
+    val_ds = StickerDataset(data_dir, split='val', seed=args.seed, augment=False,
+                            whitelist_path=args.whitelist)
     print(f"Train: {len(train_ds)} samples, Val: {len(val_ds)} samples")
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0)
