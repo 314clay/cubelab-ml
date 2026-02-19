@@ -97,8 +97,12 @@ def main():
     print(f"  Checkpoint val_sticker_acc: {checkpoint['val_sticker_acc']:.3f}")
     print(f"  Checkpoint val_image_acc: {checkpoint['val_image_acc']:.3f}")
 
+    # Parse comma-separated data dirs
+    data_dirs = [d.strip() for d in args.data_dir.split(',')]
+    data_dir = data_dirs if len(data_dirs) > 1 else data_dirs[0]
+
     # Dataset (val split only)
-    val_ds = StickerDataset(args.data_dir, split='val', seed=args.seed, augment=False)
+    val_ds = StickerDataset(data_dir, split='val', seed=args.seed, augment=False)
     val_loader = DataLoader(val_ds, batch_size=32, shuffle=False, num_workers=0)
     print(f"Val samples: {len(val_ds)}")
 

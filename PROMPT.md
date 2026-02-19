@@ -4,9 +4,22 @@
 You are iterating on the Rubik's Cube photo analysis pipeline. Each iteration, read this prompt, check what was done previously (git log, existing files, test results), and push the next piece forward.
 
 ## Ultimate Goal
-Given a photo of a Rubik's Cube showing 3 faces (Top, Front, Right), identify the exact OLL/PLL case and output the solution algorithm.
+Given a photo of a Rubik's Cube showing 3 faces (Top, Front, Right), reconstruct the full 54-sticker cube state and solve it.
 
-Pipeline: **Photo -> 15 sticker colors -> OLL/PLL case name + algorithm**
+Pipeline: **Photo → ML model → 27 visible stickers → derive full 54-sticker state → solver → solution**
+
+### Key Insight: 27 Visible Stickers = Full Cube State
+
+When viewing U, F, R faces, we see 27 of 54 stickers. The other 27 (on D, B, L) are ALL determinable:
+
+1. **12 stickers from completely occluded pieces** (1 corner DBL + 3 edges DB/DL/BL + 3 centers D/B/L) — these are F2L pieces, always solved, so their colors are known by definition.
+
+2. **15 stickers from partially visible pieces** — each belongs to a piece that has at least one sticker on a visible face:
+   - Corners with 2 visible stickers (UFL, UBR): 3rd sticker is the remaining color of the identified piece
+   - Corner with 1 visible sticker (UBL): determined by elimination (other 3 corners identified)
+   - Edges with 1 visible sticker (UB, UL): identified by the visible sticker color, or by elimination + parity constraint when both are oriented (White on top)
+
+**Zero actual unknowns.** The full state can be fed directly to Kociemba or any cube solver.
 
 ## Project Root
 `/Users/clayarnold/iCloud Drive (Archive)/Documents/github/cubelab/cubelab/experimentation/`
@@ -25,13 +38,23 @@ Pipeline: **Photo -> 15 sticker colors -> OLL/PLL case name + algorithm**
 | `cube-photo-solve/tests/test_vision.py` | Existing unit tests for CubeVision |
 | `cube-photo-solve/tests/test_cube_moves.py` | Move correctness tests (created during this work) |
 
-### Blender Rendering (ml/)
+### Blender Rendering (ml/blender/)
 | File | Purpose |
 |------|---------|
-| `ml/blender/__pycache__/lightboxes.cpython-311.pyc` | Compiled lightbox presets (source deleted). Functions: lightbox_hdri, lightbox_soft_pastel, lightbox_dark_studio, lightbox_textured, lightbox_high_contrast, setup_camera, setup_render_settings |
-| `ml/data/test_configs/labels.csv` | 21 labeled renders with 8 corner keypoints (x,y,visibility) |
-| `ml/data/test_configs/images/` | Rendered cube images (000000.jpg - 000021.jpg) |
-| `ml/src/train.py` | UNetMini training script for corner keypoint detection |
+| `ml/blender/render_known_states.py` | Renders cubes with known OLL/PLL states at fixed camera angle |
+| `ml/blender/render_training_data.py` | Generates randomized renders (varied camera/lighting) for ML training |
+| `ml/blender/verify_training_data.py` | Spot-checks renders against JSON ground truth labels |
+| `ml/data/verified_renders/` | 11 verified renders with JSON ground truth |
+| `ml/data/training_renders/` | 2,436 randomized renders (2×1,218 OLL×PLL combos, seeds 42+123) |
+
+### ML Sticker Classifier (ml/src/)
+| File | Purpose |
+|------|---------|
+| `ml/src/sticker_model.py` | `StickerClassifier`: ResNet-18 backbone → 27×6 logits |
+| `ml/src/sticker_dataset.py` | `StickerDataset`: loads PNG+JSON pairs, train/val split |
+| `ml/src/train_sticker.py` | Training loop: freeze/unfreeze schedule, checkpointing |
+| `ml/src/evaluate_sticker.py` | Evaluation: per-sticker/per-image accuracy, confusion matrix |
+| `ml/checkpoints/sticker_classifier.pt` | Trained model (98.4% per-sticker, 70.2% per-image) |
 
 ### Test Images
 | Path | Description |
@@ -49,10 +72,19 @@ Pipeline: **Photo -> 15 sticker colors -> OLL/PLL case name + algorithm**
 ---
 
 ## Current State
-- The reverse pipeline (photo -> state -> algorithm) scores **0/11** on real test photos
-- Closest matches are 3-6 stickers wrong
-- Multiple different photos produce identical output (grid positioning bug)
-- No ground truth exists for any test image (we dont know the actual cube states)
+- Steps 1-11 complete, Step 7 skipped (replaced by ML)
+- ML sticker classifier v2 trained on expanded dataset: **93.6% per-sticker, 50.2% per-image** on combined val set
+  - Original LL stickered: **99.8% per-sticker** (no regression)
+  - Stickerless (LL+F2L): **95.9% per-sticker**
+  - F2L stickered: **90.4% per-sticker**
+- Training data: **6,660 renders** across 3 directories (2,435 stickered LL + 2,225 stickerless + 2,000 F2L stickered)
+- State reconstructor: **4956/4956** (100%) on all OLL×PLL×AUF combos
+- Kociemba solutions verified on all 20 verified renders (apply solution → solved cube)
+- Full pipeline: 97.1% of ML-perfect predictions produce correct full state
+- Solver tree wired into pipeline: `PhaseDetector` → `CubeSolver` with OLL, PLL, COLL, ZBLL, OLLCP, ELL, F2L, ZBLS paths
+- Pipeline returns algorithm-based solving paths alongside Kociemba (4956/4956 coverage)
+- Multi-directory dataset loading: `StickerDataset` accepts single or list of dirs
+- All steps complete
 
 ---
 
@@ -232,8 +264,8 @@ clear_scene = render_globals['clear_scene']
 | Parameter | Range | Notes |
 |-----------|-------|-------|
 | Distance | 3.0 - 10.0 | Camera distance from cube |
-| Azimuth | 0 - 2π | Full rotation around cube |
-| Elevation | 10° - 75° | Camera height angle |
+| Azimuth | -75° to -15° | Constrained so U, F, R faces are all visible (standard view ≈ -45°) |
+| Elevation | 15° - 65° | Camera height angle |
 | Focal length | 24 - 70mm | Phone to webcam range |
 | Look-at X offset | -1.5 to +1.5 | Shifts cube left/right in frame |
 | Look-at Y offset | -0.5 to +0.5 | Minimal effect |
@@ -454,16 +486,396 @@ Start with 500 renders. If validation accuracy plateaus below target, generate m
 
 ---
 
+### STEP 9: Derive full 54-sticker state and wire end-to-end pipeline
+**Goal:** Take the ML model's 27 sticker predictions, reconstruct the full 54-sticker cube state, and produce a solution.
+
+#### 9a: Create `state_reconstructor.py` (in `cube-photo-solve/`)
+
+A module that takes 27 predicted sticker colors (U[0-8] + F[0-8] + R[0-8]) and reconstructs all 54 stickers.
+
+**Logic:**
+
+1. **Known stickers (27 visible):** Directly from ML model output.
+
+2. **Solved F2L stickers (21 known by definition):**
+   - D face: all Yellow (9 stickers)
+   - F[3-8]: all Red (6 stickers) — middle and bottom rows of front
+   - R[3-8]: all Blue (6 stickers) — middle and bottom rows of right
+
+   Note: F[3-8] and R[3-8] are in the visible 27 and should always be their solved colors. Use these as a **sanity check** — if they aren't R/B respectively, flag a prediction error.
+
+3. **Derivable stickers (6 remaining):** B[0-2] and L[0-2] (back and left top rows).
+
+   **Corners (use piece identification):**
+   - UFL corner: visible U[6] + F[0] → identify piece → L[0] is the third color
+   - UBR corner: visible U[2] + R[0] → identify piece → B[0] is the third color
+   - UBL corner: U[0] visible, other 3 corners identified → UBL is remaining piece, U[0] determines twist → B[2] and L[2] derived
+
+   **Edges (use elimination + parity):**
+   - UF edge: visible U[7] + F[1] → identified
+   - UR edge: visible U[5] + R[1] → identified
+   - Remaining 2 edges (WO, WG, WR, WB minus the two identified) go to UB and UL
+   - If edge is flipped (U sticker ≠ W), the U sticker directly identifies it → derive B[1] or L[1]
+   - If both UB and UL are oriented (both White on top), use **parity constraint** (edge permutation parity must match corner permutation parity) to resolve which is where → derive B[1] and L[1]
+
+4. **Remaining hidden stickers (L[3-8] and B[3-8]):** All solved.
+   - L[3-8]: all Green (6 stickers)
+   - B[3-8]: all Orange (6 stickers)
+
+**Output:** Complete `Cube` object with all 54 stickers, or a Kociemba-format string.
+
+**Sanity checks:**
+- Each color appears exactly 9 times across all 54 stickers
+- Each piece has a valid color combination (exists in the physical cube)
+- F2L stickers match solved state
+
+#### 9b: Create `pipeline.py` (in `cube-photo-solve/`)
+
+End-to-end CLI that wires everything together:
+
+```bash
+python3 cube-photo-solve/pipeline.py image.jpg
+```
+
+**Pipeline steps:**
+1. Load image → resize to 224×224 → normalize
+2. Run `StickerClassifier` inference → 27 sticker predictions
+3. Run `StateReconstructor` → full 54-sticker state
+4. Convert to Kociemba format string
+5. Run `kociemba.solve()` → solution moves
+6. Also run `StateResolver.match_state()` → OLL/PLL case identification
+
+**Output:**
+```
+=== CUBE ANALYSIS ===
+Visible stickers (27): W W G R W B ...
+Full state (54):       W W G R W B ... Y Y Y Y Y Y Y Y Y ...
+OLL case: OLL 27 (Sune)
+PLL case: T-Perm
+Solution: R U R' U R U2 R' (OLL) → R U R' F' R U R' U' R' F R2 U' R' (PLL)
+Kociemba solution: R U R' U R U2 R' U R U R' F' R U R' U' R' F R2 U' R' (21 moves)
+```
+
+#### 9c: Test on Blender renders with known ground truth
+
+Run the full pipeline on verified renders and training renders:
+- Compare reconstructed 54-sticker state against JSON ground truth `full_state`
+- Verify Kociemba solution is valid (apply solution to state, check if solved)
+- Score: % of images where full state is correctly reconstructed
+
+#### Verification (all must pass)
+
+- [ ] `state_reconstructor.py`: Given ground-truth 27 stickers, reconstructs correct 54-sticker state for all verified renders
+- [ ] `state_reconstructor.py`: Sanity checks pass (9 of each color, valid pieces)
+- [ ] `state_reconstructor.py`: Parity resolution works for PLL-only cases (all White top, edges permuted)
+- [ ] `pipeline.py`: Runs end-to-end on a Blender render, outputs OLL/PLL case + solution
+- [ ] `pipeline.py`: Kociemba solution is valid (applying it to the state produces solved cube)
+- [ ] Full pipeline accuracy on val set: >95% of correctly-predicted images produce correct full state
+
+---
+
+### STEP 10: Wire pipeline through the solver tree
+**Goal:** Replace the raw Kociemba-only output with the full solver tree (`PhaseDetector` → `CubeSolver`) so the pipeline returns algorithm-based solving paths (OLL → PLL, COLL → PLL, ZBLL one-look, etc.) alongside the Kociemba solution.
+
+#### Existing solver infrastructure (already committed)
+
+| File | What it does |
+|------|-------------|
+| `phase_detector.py` | `PhaseDetector` — classifies cube state: solved / pll / oll / oll_edges_oriented / f2l_last_pair / f2l_partial |
+| `solver.py` | `CubeSolver` — finds multiple solving paths ranked by move count. Strategies: direct lookup (PLL, ZBLL), two-step chains (OLL→PLL, COLL→PLL, OLLCP→PLL), combined OLL×PLL table, F2L→LL chains, ZBLS→LL chains |
+| `state_resolver.py` | `ExpandedStateResolver` — lookup tables for OLL, PLL, COLL, ZBLL, OLLCP, F2L, combined OLL×PLL |
+
+The solver currently works on **15 visible stickers** (`solve()`) or a **full Cube object** (`solve_from_cube()`). The pipeline has 27 stickers → full 54-sticker state, so we can use `solve_from_cube()`.
+
+#### 10a: Update `pipeline.py` to use `CubeSolver`
+
+Modify `run_pipeline()` to:
+1. Reconstruct full 54-sticker state (existing)
+2. Convert to `Cube` object via `StateReconstructor.to_cube()`
+3. Run `PhaseDetector.detect_phase_full(cube)` → get phase
+4. Run `CubeSolver.solve_from_cube(cube)` → get ranked solving paths
+5. Also run `kociemba.solve()` as fallback/comparison
+6. Return both: algorithm-based paths AND Kociemba solution
+
+**Updated output format:**
+```
+=== CUBE ANALYSIS ===
+Visible stickers (27): R W O W W W B W W ...
+Full state (54):       R W O W W W B W W Y Y Y ...
+Phase: OLL
+
+--- Algorithm Solutions (ranked by move count) ---
+1. OLL 27 → T-Perm (24 moves)
+   Step 1: OLL 27 — R U2 R' U' R U' R' (7 moves)
+   Step 2: T-Perm — F R U' R' U' R U R' F' R U R' U' R' F R F' (17 moves)
+
+2. OLL 27 → PLL Skip (7 moves)
+   Step 1: OLL 27 — R U2 R' U' R U' R' (7 moves)
+
+--- Kociemba Solution ---
+L' U' L U' L' U2 L' U L2 U' F2 D R2 U' R2 F2 D' (17 moves)
+```
+
+#### 10b: Handle solver initialization performance
+
+`CubeSolver` initializes `ExpandedStateResolver` which builds multiple large lookup tables. This is expensive (~10-30 seconds). Options:
+- Lazy-initialize the solver (like the existing `_get_resolver()` pattern)
+- Cache the solver alongside the existing `_resolver_cache`
+- For ground-truth testing mode, make solver optional (skip if `--no-solver` flag)
+
+#### 10c: Test solver tree integration
+
+For each verified render:
+1. Run pipeline with solver tree
+2. Verify that the detected phase is correct (OLL for OLL cases, PLL for PLL cases, etc.)
+3. Verify that at least one algorithm path actually solves the cube (apply all steps → solved)
+4. Verify Kociemba solution still works as fallback
+
+**Also test on the full OLL×PLL×AUF space:**
+- For each of the 4956 combinations, reconstruct → detect phase → solve
+- Verify that solver returns at least one valid path for every case
+- Compare solver path move counts against Kociemba move counts
+
+#### Verification (all must pass)
+
+- [ ] `pipeline.py`: Returns algorithm-based solving paths alongside Kociemba solution
+- [ ] Phase detection correct for all verified renders (OLL cases → "oll", PLL cases → "pll", etc.)
+- [ ] At least one algorithm path verifies (apply steps to cube → solved) for every verified render
+- [ ] Solver returns valid paths for >99% of the 4956 OLL×PLL×AUF combinations
+- [ ] Kociemba solution still works as fallback for all cases
+- [ ] Pipeline output shows both algorithm names and move sequences
+- [ ] Performance: solver initialization happens once and is cached
+
+---
+
+### STEP 11: Expand training data with F2L states and stickerless cube renders
+**Goal:** The ML model was trained exclusively on OLL×PLL states rendered with a stickered cube model. Expand training data to include (a) F2L-incomplete states and (b) stickerless cube renders, so the model generalizes to real-world cubes and non-LL states.
+
+#### Existing infrastructure
+
+| File | What it does |
+|------|-------------|
+| `ml/blender/render_training_data.py` | Generates randomized stickered renders (camera, lighting, OLL×PLL states). Uses `render_known_states.py` via `exec()`. |
+| `ml/blender/render_stickerless.py` | Stickerless cube renderer: 26 beveled cubies, ABS plastic materials, realistic colors. Only renders 6 hardcoded cases. `build_stickerless_cube(cube_state)` accepts a `Cube` object. |
+| `ml/data/training_renders/` | ~2,436 stickered OLL×PLL renders (480×480, Cycles 64 samples) |
+| `cube-photo-solve/algorithms.py` | `F2L_CASES` (41 cases), `OLL_CASES` (57), `PLL_CASES` (21) |
+| `cube-photo-solve/state_resolver.py` | `Cube` class with `is_f2l_solved()`, `count_solved_pairs()`, `get_unsolved_slots()` |
+
+#### 11a: Create `ml/blender/f2l_scrambler.py` — F2L state generator
+
+Pure Python (no bpy), importable by any renderer. Generates F2L-incomplete states by applying inverse F2L algorithms to specific slots.
+
+**Slot-to-rotation mapping** (F2L algorithms target the FR slot by default, so rotate target slot to FR first):
+```python
+SLOT_ROTATION = {
+    'FR': '',      # Already the target slot
+    'FL': "y'",    # Rotate FL to FR
+    'BR': 'y',     # Rotate BR to FR
+    'BL': 'y2',    # Rotate BL to FR
+}
+INV_ROTATION = {'': '', 'y': "y'", "y'": 'y', 'y2': 'y2'}
+```
+
+**`build_f2l_state(cube, slots, rng)`:**
+1. For each slot in `slots`:
+   - Pick a random F2L case from `F2L_CASES`
+   - Apply `SLOT_ROTATION[slot]` to rotate target slot to FR
+   - Apply the INVERSE of the F2L algorithm (scrambles the pair)
+   - Apply `INV_ROTATION[slot]` to rotate back
+2. Return scramble details: `[{slot, f2l_case, inverse_alg}, ...]`
+
+**Verification (all must pass):**
+- [ ] For each of the 41 F2L cases applied to FR slot: `cube.count_solved_pairs() == 3`
+- [ ] For 2-slot scramble (FR+FL): `cube.count_solved_pairs() == 2`
+- [ ] For 4-slot scramble: `cube.count_solved_pairs() == 0`
+- [ ] F2L scramble + OLL + PLL on top: cube state is valid (54 stickers, 9 of each color)
+- [ ] All 4 slots produce valid scrambles independently
+
+#### 11b: Create `ml/blender/render_stickerless_training.py` — Stickerless training data
+
+Mirrors `render_training_data.py` pattern but uses stickerless cube model from `render_stickerless.py`.
+
+Import stickerless functions via `exec()` (same pattern as `render_training_data.py` uses with `render_known_states.py`):
+```python
+stickerless_globals = {"__name__": "render_stickerless", "__builtins__": __builtins__}
+exec(open(os.path.join(SCRIPT_DIR, "render_stickerless.py")).read(), stickerless_globals)
+build_stickerless_cube = stickerless_globals['build_stickerless_cube']
+clear_scene = stickerless_globals['clear_scene']
+# etc.
+```
+
+**Camera parameters (scaled for stickerless cube, CUBE_HALF≈0.92 vs stickered 1.5):**
+
+| Parameter | Stickerless Range | Notes |
+|-----------|-------------------|-------|
+| Distance | 2.0 – 6.5 | Scaled from stickered 3.0–10.0 |
+| Azimuth | 15° to 75° | Positive convention (matches stickerless camera) |
+| Elevation | 15° – 65° | Same as stickered |
+| Focal length | 24 – 70mm | Same as stickered |
+| Look-at offsets | Scaled by 0.61 | (0.92/1.5 ratio) |
+
+**Camera position** (stickerless uses positive azimuth with negated Y):
+```python
+cam_x = distance * cos(elevation) * cos(azimuth)
+cam_y = -distance * cos(elevation) * sin(azimuth)
+cam_z = distance * sin(elevation)
+```
+
+**Modes** via `--mode` flag:
+- `ll`: Full OLL×PLL coverage (1,218 combos)
+- `f2l`: F2L-incomplete states via `f2l_scrambler.py`. Distribution: 40% 1-pair, 30% 2-pair, 20% 3-pair, 10% 4-pair. Optionally apply OLL+PLL on top.
+- `mixed`: 60% ll, 40% f2l
+
+**Render settings:** 480×480, 96 samples (Cycles + denoise), GPU/Metal. Reset `_material_cache = {}` between renders.
+
+**5 lighting presets** (reuse from `render_training_data.py`): standard, warm_studio, cool_daylight, high_contrast, soft_diffuse.
+
+**Rejection sampling:** Same pinhole projection math as stickered, but use `CUBE_HALF = 0.92` for cube corner bounds.
+
+**CLI:**
+```bash
+# Quick test (5 renders)
+/opt/homebrew/bin/blender --background --python ml/blender/render_stickerless_training.py -- --mode mixed --count 5 --seed 77
+
+# Full LL coverage
+/opt/homebrew/bin/blender --background --python ml/blender/render_stickerless_training.py -- --mode ll --seed 77
+
+# F2L batch
+/opt/homebrew/bin/blender --background --python ml/blender/render_stickerless_training.py -- --mode f2l --count 1000 --seed 78
+```
+
+**Output:** `ml/data/stickerless_renders/` with PNG + JSON pairs + `manifest.json`
+
+**Label format:**
+```json
+{
+  "image": "0042_oll_27_t_perm.png",
+  "cube_type": "stickerless",
+  "solve_phase": "ll",
+  "oll_case": "OLL 27",
+  "pll_case": "T-Perm",
+  "full_state": {"U": [...], "D": [...], "F": [...], "B": [...], "L": [...], "R": [...]},
+  "camera": {"distance": ..., "azimuth_rad": ..., "elevation_rad": ..., "focal_length": ...},
+  "lighting_preset": "warm_studio"
+}
+```
+
+For F2L states, add: `"solve_phase": "f2l"`, `"f2l_pairs_solved": N`, `"f2l_unsolved_slots": [...]`
+
+**Verification (all must pass):**
+- [ ] `--mode ll --count 5` produces 5 PNG + 5 JSON files in output dir
+- [ ] Rendered PNGs visually show beveled stickerless cubies (not flat stickers)
+- [ ] U, F, R faces visible in all renders (camera angles correct)
+- [ ] JSON labels have `cube_type == "stickerless"` and valid `full_state`
+- [ ] `--mode f2l --count 5` produces F2L-incomplete states with correct metadata
+- [ ] `manifest.json` has correct counts and coverage stats
+
+#### 11c: Create `ml/blender/render_f2l_stickered.py` — Stickered F2L renders
+
+Same architecture as `render_training_data.py` but generates F2L-incomplete states using `f2l_scrambler.py`.
+
+- Distribution: 40% 1-pair unsolved, 30% 2-pair, 20% 3-pair, 10% 4-pair
+- Optionally applies random OLL+PLL on top
+- Same camera/lighting randomization as `render_training_data.py`
+- Output: `ml/data/f2l_stickered_renders/`
+
+**CLI:**
+```bash
+/opt/homebrew/bin/blender --background --python ml/blender/render_f2l_stickered.py -- --count 5 --seed 99
+```
+
+**Verification (all must pass):**
+- [ ] `--count 5` produces 5 PNG + 5 JSON pairs
+- [ ] JSON labels: `f2l_pairs_solved + len(f2l_unsolved_slots) == 4`
+- [ ] `full_state` has non-solved colors in F[3-8] and/or R[3-8] (F2L broken)
+- [ ] Visual inspection: bottom/middle rows of F/R faces have mixed colors
+
+#### 11d: Update `ml/src/sticker_dataset.py` — Multi-directory support
+
+Update `StickerDataset.__init__` to accept `data_dir` as `str` or `list[str]`:
+
+```python
+def __init__(self, data_dir, split='train', seed=42, val_ratio=0.2, augment=True):
+    if isinstance(data_dir, str):
+        data_dirs = [data_dir]
+    else:
+        data_dirs = list(data_dir)
+
+    all_samples = []
+    for d in data_dirs:
+        jsons = sorted(f for f in os.listdir(d) if f.endswith('.json') and f != 'manifest.json')
+        for j in jsons:
+            all_samples.append((d, j))  # (directory, filename) tuples
+```
+
+`__getitem__` unpacks `(d, json_file)` to construct correct paths. Backward compatible — single string still works.
+
+**Verification (all must pass):**
+- [ ] `StickerDataset('ml/data/training_renders/')` still works (backward compatible)
+- [ ] `StickerDataset(['ml/data/training_renders/', 'ml/data/stickerless_renders/'])` loads from both dirs
+- [ ] `img.shape == (3, 224, 224)` and `label.shape == (27,)` for all samples
+- [ ] Train/val split is deterministic across multi-dir datasets
+
+#### 11e: Update `ml/src/train_sticker.py` — Comma-separated data dirs
+
+Change `--data-dir` to accept comma-separated paths:
+```bash
+python3 ml/src/train_sticker.py \
+  --data-dir "ml/data/training_renders/,ml/data/f2l_stickered_renders/,ml/data/stickerless_renders/" \
+  --epochs 30 --device mps
+```
+
+#### 11f: Generate training data and retrain
+
+**Step-by-step execution order:**
+
+1. Test `f2l_scrambler.py` standalone — verify all 41 cases × 4 slots
+2. Test `render_stickerless_training.py` with `--mode ll --count 5`
+3. Test `render_f2l_stickered.py` with `--count 5`
+4. Visually inspect test renders (open PNGs)
+5. Generate full stickerless LL batch: `--mode ll --seed 77` (~1,218 renders)
+6. Generate stickerless F2L batch: `--mode f2l --count 1000 --seed 78`
+7. Generate stickered F2L batch: `--count 2000 --seed 99`
+8. Test multi-dir dataset loading
+9. Retrain model on combined dataset (30 epochs)
+10. Evaluate: check per-sticker accuracy on each subset
+
+**Target data composition:**
+
+| Dataset | Cube Type | States | Count |
+|---------|-----------|--------|-------|
+| Existing `training_renders/` | Stickered | LL only | ~2,436 |
+| New `f2l_stickered_renders/` | Stickered | F2L + LL | ~2,000 |
+| New `stickerless_renders/` | Stickerless | LL + F2L | ~2,218 |
+| **Total** | | | **~6,654** |
+
+#### Verification (all must pass)
+
+- [ ] `f2l_scrambler.py`: All 41 F2L cases × 4 slots produce valid scrambles
+- [ ] `render_stickerless_training.py`: Produces stickerless renders with correct labels
+- [ ] `render_f2l_stickered.py`: Produces F2L-incomplete stickered renders
+- [ ] `StickerDataset` loads from multiple directories (backward compatible)
+- [ ] Full training data generated: ~6,654 renders across 3 directories
+- [ ] Retrained model: per-sticker accuracy >90% on combined val set
+- [ ] No regression: per-sticker accuracy on original LL stickered val >95%
+- [ ] Stickerless val subset: per-sticker accuracy >85%
+- [ ] F2L val subset: per-sticker accuracy >85%
+
+---
+
 ## Completion
 
 When ALL of these are true:
-- Step 1: All Cube class move tests pass (42/42) ✅
-- Step 2: All state resolver verification tests pass (15/15) ✅
-- Step 3: 11 verified Blender renders with JSON ground truth, user-confirmed ✅
+- Step 1: All Cube class move tests pass (64/64) ✅
+- Step 2: All state resolver verification tests pass ✅
+- Step 3: 20 verified Blender renders with JSON ground truth ✅
 - Step 4: Test harness runs, 99.4% accuracy on fixed-camera renders ✅
 - Step 5: Aggregate sticker accuracy > 90% on verified renders ✅
 - Step 6: Training data generator produces renders with varied camera/lighting ✅
-- Step 7: CV pipeline accuracy > 85% on varied training renders (SKIPPED — replaced by ML approach)
-- Step 8: ML sticker classifier achieves >90% per-sticker accuracy on val set
+- Step 7: CV pipeline accuracy > 85% on varied training renders (SKIPPED — replaced by ML approach) ✅
+- Step 8: ML sticker classifier achieves >90% per-sticker accuracy on val set ✅
+- Step 9: Full pipeline (photo → 27 stickers → 54 state → Kociemba solver) works end-to-end ✅
+- Step 10: Pipeline wired through solver tree (phase detection + algorithm-based solving paths) ✅
+- Step 11: Training data expanded with F2L states + stickerless renders, model retrained >90% accuracy
 
-Output: `<promise>STICKER CLASSIFIER TRAINED</promise>`
+Output: `<promise>EXPANDED TRAINING DATA WITH STICKERLESS AND F2L</promise>`

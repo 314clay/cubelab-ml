@@ -24,24 +24,31 @@ class StickerDataset(Dataset):
     def __init__(self, data_dir, split='train', seed=42, val_ratio=0.2, augment=True):
         """
         Args:
-            data_dir: path to directory with PNG + JSON pairs
+            data_dir: path (str) or list of paths to directories with PNG + JSON pairs
             split: 'train' or 'val'
             seed: random seed for deterministic split
             val_ratio: fraction of data for validation
             augment: whether to apply data augmentation (train only)
         """
-        self.data_dir = data_dir
+        if isinstance(data_dir, str):
+            data_dirs = [data_dir]
+        else:
+            data_dirs = list(data_dir)
 
-        # Find all JSON label files
-        all_jsons = sorted(
-            f for f in os.listdir(data_dir)
-            if f.endswith('.json') and f != 'manifest.json'
-        )
+        # Collect all (directory, json_filename) pairs
+        all_samples = []
+        for d in data_dirs:
+            jsons = sorted(
+                f for f in os.listdir(d)
+                if f.endswith('.json') and f != 'manifest.json'
+            )
+            for j in jsons:
+                all_samples.append((d, j))
 
         # Deterministic train/val split by index
         import random
         rng = random.Random(seed)
-        indices = list(range(len(all_jsons)))
+        indices = list(range(len(all_samples)))
         rng.shuffle(indices)
 
         n_val = int(len(indices) * val_ratio)
@@ -50,7 +57,7 @@ class StickerDataset(Dataset):
         else:
             selected = sorted(indices[n_val:])
 
-        self.samples = [all_jsons[i] for i in selected]
+        self.samples = [all_samples[i] for i in selected]
 
         # Transforms
         base_transforms = [
@@ -78,15 +85,15 @@ class StickerDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        json_file = self.samples[idx]
-        json_path = os.path.join(self.data_dir, json_file)
+        data_dir, json_file = self.samples[idx]
+        json_path = os.path.join(data_dir, json_file)
 
         with open(json_path) as f:
             label_data = json.load(f)
 
         # Load image
         img_file = label_data['image']
-        img_path = os.path.join(self.data_dir, img_file)
+        img_path = os.path.join(data_dir, img_file)
         image = Image.open(img_path).convert('RGB')
         image = self.transform(image)
 
@@ -100,7 +107,10 @@ class StickerDataset(Dataset):
 
 if __name__ == "__main__":
     import sys
-    data_dir = sys.argv[1] if len(sys.argv) > 1 else "ml/data/training_renders"
+    arg = sys.argv[1] if len(sys.argv) > 1 else "ml/data/training_renders"
+    # Support comma-separated directories
+    data_dirs = [d.strip() for d in arg.split(',')]
+    data_dir = data_dirs if len(data_dirs) > 1 else data_dirs[0]
     ds = StickerDataset(data_dir, split='train')
     print(f"Train samples: {len(ds)}")
     if len(ds) > 0:

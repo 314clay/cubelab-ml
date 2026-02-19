@@ -108,9 +108,13 @@ def main():
     device = torch.device(args.device if args.device != 'auto' else auto_device())
     print(f"Device: {device}")
 
+    # Parse comma-separated data dirs
+    data_dirs = [d.strip() for d in args.data_dir.split(',')]
+    data_dir = data_dirs if len(data_dirs) > 1 else data_dirs[0]
+
     # Datasets
-    train_ds = StickerDataset(args.data_dir, split='train', seed=args.seed)
-    val_ds = StickerDataset(args.data_dir, split='val', seed=args.seed, augment=False)
+    train_ds = StickerDataset(data_dir, split='train', seed=args.seed)
+    val_ds = StickerDataset(data_dir, split='val', seed=args.seed, augment=False)
     print(f"Train: {len(train_ds)} samples, Val: {len(val_ds)} samples")
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0)

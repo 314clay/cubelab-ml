@@ -1,18 +1,19 @@
 """
-Blender script to generate randomized training data for the CV pipeline.
-Run with:
-    /opt/homebrew/bin/blender --background --python ml/blender/render_training_data.py -- [OPTIONS]
+Blender script to generate stickerless cube training data with randomized camera/lighting.
 
-Generates renders with varied camera positions, lighting, and OLL/PLL states.
-Each render produces a PNG image + JSON label with ground truth and camera metadata.
+Supports both LL-only (OLL×PLL) and F2L-incomplete states.
+
+Run with:
+    /opt/homebrew/bin/blender --background --python ml/blender/render_stickerless_training.py -- [OPTIONS]
 
 Options:
-    --count N         Number of renders (0 = all 1218 combos, default: 0)
-    --seed N          Random seed (default: 42)
-    --resolution N    Image resolution in pixels (default: 480)
-    --samples N       Cycles render samples (default: 64)
-    --hdri-dir PATH   Directory of .exr/.hdr files for HDRI backgrounds
-    --output-dir PATH Output directory override
+    --mode {ll,f2l,mixed}  Render mode (default: mixed)
+    --count N              Number of renders (0 = all combos for ll mode, default: 0)
+    --seed N               Random seed (default: 77)
+    --resolution N         Image resolution in pixels (default: 480)
+    --samples N            Cycles render samples (default: 96)
+    --output-dir PATH      Output directory override
+    --hdri-dir PATH        Directory of .exr/.hdr files for HDRI backgrounds
 """
 
 import bpy
@@ -23,21 +24,25 @@ import sys
 import time
 import random
 
-# --- Reuse shared functions from render_known_states.py via exec() ---
+# ---------------------------------------------------------------------------
+# Path setup
+# ---------------------------------------------------------------------------
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 EXPERIMENT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 CUBE_SOLVE_DIR = os.path.join(EXPERIMENT_DIR, "cube-photo-solve")
 sys.path.insert(0, CUBE_SOLVE_DIR)
+sys.path.insert(0, SCRIPT_DIR)
 
-render_globals = {
-    "__name__": "render_known_states",
+# Import stickerless renderer via exec() (same pattern as render_training_data.py)
+stickerless_globals = {
+    "__name__": "render_stickerless",
     "__builtins__": __builtins__,
-    "__file__": os.path.join(SCRIPT_DIR, "render_known_states.py"),
+    "__file__": os.path.join(SCRIPT_DIR, "render_stickerless.py"),
 }
-exec(open(os.path.join(SCRIPT_DIR, "render_known_states.py")).read(), render_globals)
+exec(open(os.path.join(SCRIPT_DIR, "render_stickerless.py")).read(), stickerless_globals)
 
-clear_scene = render_globals['clear_scene']
-create_cube_with_state = render_globals['create_cube_with_state']
+build_stickerless_cube = stickerless_globals['build_stickerless_cube']
+clear_scene = stickerless_globals['clear_scene']
 
 # Load HDRI environment utility
 hdri_globals = {
@@ -53,13 +58,14 @@ cleanup_hdri_images = hdri_globals['cleanup_hdri_images']
 
 from state_resolver import Cube
 from algorithms import OLL_CASES, PLL_CASES
+from f2l_scrambler import build_random_f2l_state
 
-DEFAULT_OUTPUT_DIR = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "training_renders")
+DEFAULT_OUTPUT_DIR = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "stickerless_renders")
 
 # ---------------------------------------------------------------------------
-# Cube geometry for rejection sampling
+# Cube geometry for rejection sampling (stickerless cube is smaller)
 # ---------------------------------------------------------------------------
-CUBE_HALF = 1.5  # Cube body is size=3.0, corners at +/-1.5
+CUBE_HALF = 0.92  # Stickerless cube outer extent
 
 
 def get_cube_corners():
@@ -95,10 +101,7 @@ def _vec_norm(a):
 
 
 def check_all_corners_in_frame(cam_pos, look_at, focal_mm, img_size, margin=30):
-    """
-    Check if all 8 cube corners project within the image frame.
-    Uses a pinhole camera model ported from the exploration notebook.
-    """
+    """Check if all 8 cube corners project within the image frame."""
     forward = _vec_norm(_vec_sub(look_at, cam_pos))
     if _vec_dot(forward, forward) < 0.5:
         return False
@@ -133,11 +136,10 @@ def check_all_corners_in_frame(cam_pos, look_at, focal_mm, img_size, margin=30):
 
 
 # ---------------------------------------------------------------------------
-# Lighting presets
+# Lighting presets (reused from render_training_data.py)
 # ---------------------------------------------------------------------------
 
 def _setup_world(bg_gray, strength, color=None):
-    """Configure world background node."""
     world = bpy.data.worlds.get("World")
     if world is None:
         world = bpy.data.worlds.new("World")
@@ -153,7 +155,6 @@ def _setup_world(bg_gray, strength, color=None):
 
 
 def setup_lighting_standard(bg_gray):
-    """Dual sun (3.0 + 1.5) + ambient.  Current baseline from render_known_states."""
     bpy.ops.object.light_add(type='SUN', location=(5, -5, 10))
     sun = bpy.context.active_object
     sun.name = "KeyLight"
@@ -170,7 +171,6 @@ def setup_lighting_standard(bg_gray):
 
 
 def setup_lighting_warm_studio(bg_gray):
-    """Warm area lights with orange-tinted ambient.  Simulates indoor table lighting."""
     bpy.ops.object.light_add(type='AREA', location=(3, -3, 5))
     key = bpy.context.active_object
     key.name = "KeyArea"
@@ -191,7 +191,6 @@ def setup_lighting_warm_studio(bg_gray):
 
 
 def setup_lighting_cool_daylight(bg_gray):
-    """Blueish key sun + warm fill.  Simulates window/daylight."""
     bpy.ops.object.light_add(type='SUN', location=(4, -6, 8))
     key = bpy.context.active_object
     key.name = "KeySun"
@@ -210,7 +209,6 @@ def setup_lighting_cool_daylight(bg_gray):
 
 
 def setup_lighting_high_contrast(bg_gray):
-    """Single hard sun (5.0), no fill, dark ambient.  Strong directional shadows."""
     bpy.ops.object.light_add(type='SUN', location=(5, -5, 8))
     sun = bpy.context.active_object
     sun.name = "HardSun"
@@ -221,7 +219,6 @@ def setup_lighting_high_contrast(bg_gray):
 
 
 def setup_lighting_soft_diffuse(bg_gray):
-    """World-only lighting (strength 2.0), no directional lights.  Overcast sky."""
     _setup_world(bg_gray, 2.0)
 
 
@@ -233,38 +230,30 @@ LIGHTING_PRESETS = {
     'soft_diffuse': setup_lighting_soft_diffuse,
 }
 
+
 # ---------------------------------------------------------------------------
-# Randomized camera with TRACK_TO constraint
+# Randomized camera (stickerless convention: positive azimuth, negated Y)
 # ---------------------------------------------------------------------------
 
 def setup_randomized_camera(rng, img_size):
-    """
-    Create a camera with randomized spherical position aimed via TRACK_TO
-    constraint at a randomly offset look-at point.
-
-    Uses rejection sampling (max 100 attempts) to ensure all 8 cube corners
-    project inside the image frame.
-
-    Returns camera parameter dict, or None on failure.
-    """
+    """Create a randomized camera for stickerless cube viewing U/F/R faces."""
     max_attempts = 100
 
     for attempt in range(max_attempts):
-        distance = rng.uniform(3.0, 10.0)
-        # Constrain azimuth so U, F, R faces are all visible.
-        # Standard view is at azimuth=-45 deg. F face visible when Y<0
-        # (sin(az)<0), R face visible when X>0 (cos(az)>0).
-        # Range: -75 to -15 deg gives good visibility of all 3 faces.
-        azimuth = rng.uniform(math.radians(-75), math.radians(-15))
+        # Scaled ranges for smaller stickerless cube
+        distance = rng.uniform(2.0, 6.5)
+        # Positive azimuth convention (stickerless camera)
+        azimuth = rng.uniform(math.radians(15), math.radians(75))
         elevation = rng.uniform(math.radians(15), math.radians(65))
         focal_mm = rng.uniform(24, 70)
 
-        look_x = rng.uniform(-1.5, 1.5)
-        look_y = rng.uniform(-0.5, 0.5)
-        look_z = rng.uniform(-1.0, 1.0)
+        # Scaled look-at offsets (0.92/1.5 ≈ 0.61 ratio)
+        look_x = rng.uniform(-0.9, 0.9)
+        look_y = rng.uniform(-0.3, 0.3)
+        look_z = rng.uniform(-0.6, 0.6)
 
         cam_x = distance * math.cos(elevation) * math.cos(azimuth)
-        cam_y = distance * math.cos(elevation) * math.sin(azimuth)
+        cam_y = -distance * math.cos(elevation) * math.sin(azimuth)
         cam_z = distance * math.sin(elevation)
 
         cam_pos = (cam_x, cam_y, cam_z)
@@ -273,12 +262,13 @@ def setup_randomized_camera(rng, img_size):
         if not check_all_corners_in_frame(cam_pos, look_at, focal_mm, img_size):
             continue
 
-        # Valid config found — create Blender objects
+        # Valid config — create Blender camera
         bpy.ops.object.camera_add(location=cam_pos)
         camera = bpy.context.active_object
         camera.name = "Camera"
         camera.data.type = 'PERSP'
         camera.data.lens = focal_mm
+        camera.data.clip_end = 100
         bpy.context.scene.camera = camera
 
         bpy.ops.object.empty_add(type='PLAIN_AXES', location=look_at)
@@ -308,24 +298,18 @@ def setup_randomized_camera(rng, img_size):
 # ---------------------------------------------------------------------------
 
 def build_oll_pll_combos():
-    """
-    Build the full cartesian product of 58 OLL states x 21 PLL states.
-    Excludes alias entries (Sune, Anti-Sune) to avoid duplicates.
-    """
+    """Build full cartesian product of 58 OLL × 21 PLL states."""
     oll_names = ["OLL Skip"]
     for key in OLL_CASES:
         if key.startswith("OLL "):
             oll_names.append(key)
-    # oll_names: OLL Skip + OLL 1..57 = 58
 
     pll_names = list(PLL_CASES.keys())
-    # pll_names: 21 entries including "Solved"
 
     combos = []
     for oll in oll_names:
         for pll in pll_names:
             combos.append((oll, pll))
-
     return combos
 
 
@@ -334,9 +318,18 @@ def build_oll_pll_combos():
 # ---------------------------------------------------------------------------
 
 def configure_render(resolution, samples):
-    """Configure Cycles render settings."""
+    """Configure Cycles render settings for stickerless cube."""
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
+
+    # Use GPU if available (Metal on macOS)
+    prefs = bpy.context.preferences.addons.get('cycles')
+    if prefs:
+        prefs.preferences.compute_device_type = 'METAL'
+        for device in prefs.preferences.devices:
+            device.use = True
+        scene.cycles.device = 'GPU'
+
     scene.cycles.samples = samples
     scene.cycles.use_denoising = True
     scene.render.resolution_x = resolution
@@ -345,11 +338,10 @@ def configure_render(resolution, samples):
 
 
 # ---------------------------------------------------------------------------
-# CLI argument parsing
+# CLI
 # ---------------------------------------------------------------------------
 
 def parse_args():
-    """Parse arguments after Blender's '--' separator."""
     argv = sys.argv
     if '--' in argv:
         argv = argv[argv.index('--') + 1:]
@@ -357,24 +349,22 @@ def parse_args():
         argv = []
 
     import argparse
-    parser = argparse.ArgumentParser(description="Generate randomized training renders")
+    parser = argparse.ArgumentParser(description="Generate stickerless training renders")
+    parser.add_argument('--mode', choices=['ll', 'f2l', 'mixed'], default='mixed',
+                        help='Render mode: ll=OLL×PLL, f2l=F2L states, mixed=both')
     parser.add_argument('--count', type=int, default=0,
-                        help='Number of renders (0 = all 1218 combos)')
-    parser.add_argument('--seed', type=int, default=42,
-                        help='Random seed for reproducibility')
-    parser.add_argument('--resolution', type=int, default=480,
-                        help='Image resolution in pixels (square)')
-    parser.add_argument('--samples', type=int, default=64,
-                        help='Cycles render samples')
+                        help='Number of renders (0=all combos for ll mode, default: 0)')
+    parser.add_argument('--seed', type=int, default=77)
+    parser.add_argument('--resolution', type=int, default=480)
+    parser.add_argument('--samples', type=int, default=96)
+    parser.add_argument('--output-dir', type=str, default=None)
     parser.add_argument('--hdri-dir', type=str, default=None,
                         help='Directory of .exr/.hdr files for HDRI backgrounds')
-    parser.add_argument('--output-dir', type=str, default=None,
-                        help='Output directory override')
     return parser.parse_args(argv)
 
 
 # ---------------------------------------------------------------------------
-# Main generation loop
+# Main
 # ---------------------------------------------------------------------------
 
 def main():
@@ -392,17 +382,52 @@ def main():
             sys.exit(1)
         print(f"HDRI mode: {len(hdri_files)} environment maps from {args.hdri_dir}")
 
-    all_combos = build_oll_pll_combos()
-    print(f"Total OLL x PLL combinations: {len(all_combos)}")
+    # Build render list based on mode
+    render_list = []  # list of (cube, metadata) tuples to render
 
-    if args.count > 0:
-        combos = rng.sample(all_combos, min(args.count, len(all_combos)))
-    else:
-        combos = list(all_combos)
-        rng.shuffle(combos)
+    if args.mode in ('ll', 'mixed'):
+        combos = build_oll_pll_combos()
+        if args.mode == 'mixed':
+            # 60% LL
+            n_ll = int((args.count or len(combos)) * 0.6) if args.count else len(combos)
+            ll_combos = rng.sample(combos, min(n_ll, len(combos)))
+        elif args.count > 0:
+            ll_combos = rng.sample(combos, min(args.count, len(combos)))
+        else:
+            ll_combos = list(combos)
+            rng.shuffle(ll_combos)
 
-    print(f"Rendering {len(combos)} images "
-          f"(seed={args.seed}, res={args.resolution}, samples={args.samples})")
+        for oll_name, pll_name in ll_combos:
+            cube = Cube()
+            if oll_name != "OLL Skip" and OLL_CASES.get(oll_name):
+                cube.apply_algorithm(OLL_CASES[oll_name])
+            if pll_name != "Solved" and PLL_CASES.get(pll_name):
+                cube.apply_algorithm(PLL_CASES[pll_name])
+
+            meta = {
+                'cube_type': 'stickerless',
+                'solve_phase': 'll',
+                'oll_case': oll_name,
+                'pll_case': pll_name,
+            }
+            render_list.append((cube, meta))
+
+    if args.mode in ('f2l', 'mixed'):
+        if args.mode == 'mixed':
+            n_f2l = int((args.count or 800) * 0.4) if args.count else 800
+        elif args.count > 0:
+            n_f2l = args.count
+        else:
+            n_f2l = 1000
+
+        for _ in range(n_f2l):
+            cube, meta = build_random_f2l_state(rng, apply_ll=True)
+            meta['cube_type'] = 'stickerless'
+            render_list.append((cube, meta))
+
+    print(f"Stickerless training: {len(render_list)} renders "
+          f"(mode={args.mode}, seed={args.seed}, res={args.resolution}, "
+          f"samples={args.samples})")
 
     lighting_names = list(LIGHTING_PRESETS.keys())
     start_time = time.time()
@@ -410,25 +435,27 @@ def main():
     skipped = 0
     results = []
 
-    for i, (oll_name, pll_name) in enumerate(combos):
-        print(f"\n[{i + 1}/{len(combos)}] {oll_name} + {pll_name}")
+    for i, (cube, meta) in enumerate(render_list):
+        phase = meta.get('solve_phase', 'll')
+        case_desc = meta.get('oll_case', '') + ' + ' + meta.get('pll_case', '')
+        if phase == 'f2l':
+            n_unsolved = 4 - meta.get('f2l_pairs_solved', 4)
+            case_desc = f"F2L({n_unsolved}p) {meta.get('oll_case', '')}"
 
-        # Build cube state
-        cube = Cube()
-        if oll_name != "OLL Skip":
-            cube.apply_algorithm(OLL_CASES[oll_name])
-        if pll_name != "Solved":
-            cube.apply_algorithm(PLL_CASES[pll_name])
+        print(f"\n[{i + 1}/{len(render_list)}] {case_desc}")
 
-        # Clear scene and create cube geometry
+        # Reset material cache and clear scene
+        stickerless_globals['_material_cache'] = {}
         clear_scene()
         cleanup_hdri_images()
-        create_cube_with_state(cube)
 
-        # Randomized camera (with rejection sampling)
+        # Build stickerless geometry
+        cubies, mechanism = build_stickerless_cube(cube)
+
+        # Randomized camera
         cam_params = setup_randomized_camera(rng, args.resolution)
         if cam_params is None:
-            print("  SKIP: no valid camera config found in 100 attempts")
+            print("  SKIP: no valid camera config")
             skipped += 1
             continue
 
@@ -450,28 +477,27 @@ def main():
         configure_render(args.resolution, args.samples)
 
         # File naming
-        safe_oll = oll_name.lower().replace(' ', '_')
-        safe_pll = (pll_name.lower()
-                    .replace(' ', '_')
-                    .replace('(', '')
-                    .replace(')', ''))
-        filename = f"{i:04d}_{safe_oll}_{safe_pll}"
+        if phase == 'll':
+            safe_oll = meta['oll_case'].lower().replace(' ', '_')
+            safe_pll = (meta['pll_case'].lower()
+                        .replace(' ', '_').replace('(', '').replace(')', ''))
+            filename = f"{i:04d}_{safe_oll}_{safe_pll}"
+        else:
+            n_unsolved = 4 - meta.get('f2l_pairs_solved', 4)
+            filename = f"{i:04d}_f2l_{n_unsolved}p_{meta.get('oll_case', 'skip').lower().replace(' ', '_')}"
 
-        # Render image
+        # Render
         image_path = os.path.join(output_dir, f"{filename}.png")
         bpy.context.scene.render.filepath = image_path
         bpy.ops.render.render(write_still=True)
 
-        # Save JSON label
-        visible = cube.get_visible_stickers()
+        # Save label
         label = {
             "image": f"{filename}.png",
-            "oll_case": oll_name,
-            "pll_case": pll_name,
-            "visible_stickers": visible,
-            "top_face": list(cube.faces['U']),
-            "front_top_row": list(cube.faces['F'][0:3]),
-            "right_top_row": list(cube.faces['R'][0:3]),
+            "cube_type": "stickerless",
+            "solve_phase": meta.get('solve_phase', 'll'),
+            "oll_case": meta.get('oll_case', 'OLL Skip'),
+            "pll_case": meta.get('pll_case', 'Solved'),
             "full_state": {k: list(v) for k, v in cube.faces.items()},
             "camera": cam_params,
             "lighting_preset": preset_name,
@@ -479,59 +505,50 @@ def main():
         if hdri_params:
             label['hdri'] = hdri_params
 
+        # Add F2L-specific metadata
+        if phase == 'f2l':
+            label['f2l_pairs_solved'] = meta['f2l_pairs_solved']
+            label['f2l_unsolved_slots'] = meta['f2l_unsolved_slots']
+            if 'f2l_scramble_details' in meta:
+                label['f2l_scramble_details'] = meta['f2l_scramble_details']
+
         label_path = os.path.join(output_dir, f"{filename}.json")
         with open(label_path, 'w') as f:
             json.dump(label, f, indent=2)
 
         results.append({
             "image": f"{filename}.png",
-            "oll_case": oll_name,
-            "pll_case": pll_name,
+            "solve_phase": phase,
+            "oll_case": meta.get('oll_case', ''),
             "lighting_preset": preset_name,
             "camera_distance": cam_params['distance'],
-            "camera_elevation": cam_params['elevation_deg'],
-            "camera_focal": cam_params['focal_length_mm'],
         })
 
-        print(f"  Rendered: {filename}.png "
-              f"({preset_name}, d={cam_params['distance']:.1f}, "
-              f"el={cam_params['elevation_deg']:.0f} deg, "
-              f"f={cam_params['focal_length_mm']:.0f}mm, "
-              f"tries={cam_params['attempts']})")
+        print(f"  Rendered: {filename}.png ({preset_name}, tries={cam_params['attempts']})")
 
-    # -----------------------------------------------------------------------
-    # Write manifest.json
-    # -----------------------------------------------------------------------
+    # Manifest
     elapsed = time.time() - start_time
     avg_attempts = total_attempts / len(results) if results else 0
-    rejection_rate = 1.0 - (1.0 / avg_attempts) if avg_attempts > 1 else 0.0
+
+    ll_count = sum(1 for r in results if r['solve_phase'] == 'll')
+    f2l_count = sum(1 for r in results if r['solve_phase'] == 'f2l')
 
     manifest = {
         "total_renders": len(results),
-        "total_combos": len(all_combos),
         "skipped": skipped,
         "seed": args.seed,
+        "mode": args.mode,
         "resolution": args.resolution,
         "samples": args.samples,
+        "cube_type": "stickerless",
         "elapsed_seconds": round(elapsed, 1),
-        "avg_seconds_per_render": round(elapsed / len(results), 1) if results else 0,
-        "rejection_rate": round(rejection_rate, 3),
+        "ll_renders": ll_count,
+        "f2l_renders": f2l_count,
         "avg_camera_attempts": round(avg_attempts, 1),
-        "oll_coverage": len(set(r['oll_case'] for r in results)),
-        "pll_coverage": len(set(r['pll_case'] for r in results)),
         "lighting_distribution": {
             name: sum(1 for r in results if r['lighting_preset'] == name)
             for name in lighting_names
         },
-        "parameter_ranges": {
-            "distance": {"min": 3.0, "max": 10.0},
-            "elevation_deg": {"min": 10, "max": 75},
-            "focal_length_mm": {"min": 24, "max": 70},
-            "look_at_offset_x": {"min": -1.5, "max": 1.5},
-            "look_at_offset_y": {"min": -0.5, "max": 0.5},
-            "look_at_offset_z": {"min": -1.0, "max": 1.0},
-        },
-        "renders": results,
     }
 
     manifest_path = os.path.join(output_dir, "manifest.json")
@@ -539,16 +556,12 @@ def main():
         json.dump(manifest, f, indent=2)
 
     print(f"\n{'=' * 60}")
-    print(f"Generation complete!")
-    print(f"  Renders:        {len(results)}/{len(combos)}")
-    print(f"  Skipped:        {skipped}")
+    print(f"Stickerless generation complete!")
+    print(f"  Total:     {len(results)} ({ll_count} LL + {f2l_count} F2L)")
+    print(f"  Skipped:   {skipped}")
     if results:
-        print(f"  Time:           {elapsed:.1f}s ({elapsed / len(results):.1f}s per render)")
-    print(f"  Rejection rate: {rejection_rate:.1%}")
-    print(f"  OLL coverage:   {len(set(r['oll_case'] for r in results))}")
-    print(f"  PLL coverage:   {len(set(r['pll_case'] for r in results))}")
-    print(f"  Output:         {output_dir}")
-    print(f"  Manifest:       {manifest_path}")
+        print(f"  Time:      {elapsed:.1f}s ({elapsed / len(results):.1f}s per render)")
+    print(f"  Output:    {output_dir}")
     print(f"{'=' * 60}")
 
 
