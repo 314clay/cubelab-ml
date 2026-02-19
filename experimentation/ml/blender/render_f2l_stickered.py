@@ -13,6 +13,7 @@ Options:
     --resolution N    Image resolution in pixels (default: 480)
     --samples N       Cycles render samples (default: 64)
     --output-dir PATH Output directory override
+    --hdri-dir PATH   Directory of .exr/.hdr files for HDRI backgrounds
 """
 
 import bpy
@@ -39,6 +40,18 @@ exec(open(os.path.join(SCRIPT_DIR, "render_known_states.py")).read(), render_glo
 
 clear_scene = render_globals['clear_scene']
 create_cube_with_state = render_globals['create_cube_with_state']
+
+# Load HDRI environment utility
+hdri_globals = {
+    "__name__": "hdri_env",
+    "__builtins__": __builtins__,
+    "__file__": os.path.join(SCRIPT_DIR, "hdri_env.py"),
+}
+exec(open(os.path.join(SCRIPT_DIR, "hdri_env.py")).read(), hdri_globals)
+setup_hdri_world = hdri_globals['setup_hdri_world']
+get_hdri_files = hdri_globals['get_hdri_files']
+adjust_scene_lights = hdri_globals['adjust_scene_lights']
+cleanup_hdri_images = hdri_globals['cleanup_hdri_images']
 
 from state_resolver import Cube
 from f2l_scrambler import build_random_f2l_state
@@ -301,6 +314,8 @@ def parse_args():
     parser.add_argument('--resolution', type=int, default=480)
     parser.add_argument('--samples', type=int, default=64)
     parser.add_argument('--output-dir', type=str, default=None)
+    parser.add_argument('--hdri-dir', type=str, default=None,
+                        help='Directory of .exr/.hdr files for HDRI backgrounds')
     return parser.parse_args(argv)
 
 
@@ -314,6 +329,14 @@ def main():
 
     output_dir = args.output_dir or DEFAULT_OUTPUT_DIR
     os.makedirs(output_dir, exist_ok=True)
+
+    hdri_files = None
+    if args.hdri_dir:
+        hdri_files = get_hdri_files(args.hdri_dir)
+        if not hdri_files:
+            print(f"ERROR: No .exr/.hdr files found in {args.hdri_dir}")
+            sys.exit(1)
+        print(f"HDRI mode: {len(hdri_files)} environment maps from {args.hdri_dir}")
 
     print(f"Stickered F2L training: {args.count} renders "
           f"(seed={args.seed}, res={args.resolution}, samples={args.samples})")
@@ -334,6 +357,7 @@ def main():
 
         # Clear scene and create stickered cube
         clear_scene()
+        cleanup_hdri_images()
         create_cube_with_state(cube)
 
         # Randomized camera
@@ -349,6 +373,13 @@ def main():
         preset_name = rng.choice(lighting_names)
         bg_gray = rng.uniform(0.1, 0.5)
         LIGHTING_PRESETS[preset_name](bg_gray)
+
+        # HDRI background override (replaces gray world, keeps directional lights)
+        hdri_params = None
+        if hdri_files:
+            hdri_path = rng.choice(hdri_files)
+            hdri_params = setup_hdri_world(hdri_path, rng)
+            hdri_params['light_mode'] = adjust_scene_lights(rng)
 
         # Render settings
         configure_render(args.resolution, args.samples)
@@ -376,6 +407,8 @@ def main():
             "camera": cam_params,
             "lighting_preset": preset_name,
         }
+        if hdri_params:
+            label['hdri'] = hdri_params
 
         label_path = os.path.join(output_dir, f"{filename}.json")
         with open(label_path, 'w') as f:

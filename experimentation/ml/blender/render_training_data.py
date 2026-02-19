@@ -11,6 +11,8 @@ Options:
     --seed N          Random seed (default: 42)
     --resolution N    Image resolution in pixels (default: 480)
     --samples N       Cycles render samples (default: 64)
+    --hdri-dir PATH   Directory of .exr/.hdr files for HDRI backgrounds
+    --output-dir PATH Output directory override
 """
 
 import bpy
@@ -37,11 +39,22 @@ exec(open(os.path.join(SCRIPT_DIR, "render_known_states.py")).read(), render_glo
 clear_scene = render_globals['clear_scene']
 create_cube_with_state = render_globals['create_cube_with_state']
 
+# Load HDRI environment utility
+hdri_globals = {
+    "__name__": "hdri_env",
+    "__builtins__": __builtins__,
+    "__file__": os.path.join(SCRIPT_DIR, "hdri_env.py"),
+}
+exec(open(os.path.join(SCRIPT_DIR, "hdri_env.py")).read(), hdri_globals)
+setup_hdri_world = hdri_globals['setup_hdri_world']
+get_hdri_files = hdri_globals['get_hdri_files']
+adjust_scene_lights = hdri_globals['adjust_scene_lights']
+cleanup_hdri_images = hdri_globals['cleanup_hdri_images']
+
 from state_resolver import Cube
 from algorithms import OLL_CASES, PLL_CASES
 
-OUTPUT_DIR = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "training_renders")
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+DEFAULT_OUTPUT_DIR = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "training_renders")
 
 # ---------------------------------------------------------------------------
 # Cube geometry for rejection sampling
@@ -353,6 +366,10 @@ def parse_args():
                         help='Image resolution in pixels (square)')
     parser.add_argument('--samples', type=int, default=64,
                         help='Cycles render samples')
+    parser.add_argument('--hdri-dir', type=str, default=None,
+                        help='Directory of .exr/.hdr files for HDRI backgrounds')
+    parser.add_argument('--output-dir', type=str, default=None,
+                        help='Output directory override')
     return parser.parse_args(argv)
 
 
@@ -363,6 +380,17 @@ def parse_args():
 def main():
     args = parse_args()
     rng = random.Random(args.seed)
+
+    output_dir = args.output_dir or DEFAULT_OUTPUT_DIR
+    os.makedirs(output_dir, exist_ok=True)
+
+    hdri_files = None
+    if args.hdri_dir:
+        hdri_files = get_hdri_files(args.hdri_dir)
+        if not hdri_files:
+            print(f"ERROR: No .exr/.hdr files found in {args.hdri_dir}")
+            sys.exit(1)
+        print(f"HDRI mode: {len(hdri_files)} environment maps from {args.hdri_dir}")
 
     all_combos = build_oll_pll_combos()
     print(f"Total OLL x PLL combinations: {len(all_combos)}")
@@ -394,6 +422,7 @@ def main():
 
         # Clear scene and create cube geometry
         clear_scene()
+        cleanup_hdri_images()
         create_cube_with_state(cube)
 
         # Randomized camera (with rejection sampling)
@@ -410,6 +439,13 @@ def main():
         bg_gray = rng.uniform(0.1, 0.5)
         LIGHTING_PRESETS[preset_name](bg_gray)
 
+        # HDRI background override (replaces gray world, keeps directional lights)
+        hdri_params = None
+        if hdri_files:
+            hdri_path = rng.choice(hdri_files)
+            hdri_params = setup_hdri_world(hdri_path, rng)
+            hdri_params['light_mode'] = adjust_scene_lights(rng)
+
         # Render settings
         configure_render(args.resolution, args.samples)
 
@@ -422,7 +458,7 @@ def main():
         filename = f"{i:04d}_{safe_oll}_{safe_pll}"
 
         # Render image
-        image_path = os.path.join(OUTPUT_DIR, f"{filename}.png")
+        image_path = os.path.join(output_dir, f"{filename}.png")
         bpy.context.scene.render.filepath = image_path
         bpy.ops.render.render(write_still=True)
 
@@ -440,8 +476,10 @@ def main():
             "camera": cam_params,
             "lighting_preset": preset_name,
         }
+        if hdri_params:
+            label['hdri'] = hdri_params
 
-        label_path = os.path.join(OUTPUT_DIR, f"{filename}.json")
+        label_path = os.path.join(output_dir, f"{filename}.json")
         with open(label_path, 'w') as f:
             json.dump(label, f, indent=2)
 
@@ -496,7 +534,7 @@ def main():
         "renders": results,
     }
 
-    manifest_path = os.path.join(OUTPUT_DIR, "manifest.json")
+    manifest_path = os.path.join(output_dir, "manifest.json")
     with open(manifest_path, 'w') as f:
         json.dump(manifest, f, indent=2)
 
@@ -509,7 +547,7 @@ def main():
     print(f"  Rejection rate: {rejection_rate:.1%}")
     print(f"  OLL coverage:   {len(set(r['oll_case'] for r in results))}")
     print(f"  PLL coverage:   {len(set(r['pll_case'] for r in results))}")
-    print(f"  Output:         {OUTPUT_DIR}")
+    print(f"  Output:         {output_dir}")
     print(f"  Manifest:       {manifest_path}")
     print(f"{'=' * 60}")
 
