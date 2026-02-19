@@ -30,7 +30,7 @@ SLOT_ROTATION = {
 }
 INV_ROTATION = {'': '', 'y': "y'", "y'": 'y', 'y2': 'y2'}
 
-ALL_SLOTS = ['FR', 'FL', 'BR', 'BL']
+ALL_SLOTS = ['FR', 'FL', 'BR']  # BL excluded: not visible from camera angle
 
 
 def invert_alg(alg_str):
@@ -95,12 +95,12 @@ def build_f2l_state(cube, slots, rng=None):
     return details
 
 
-def build_random_f2l_state(rng=None, max_unsolved=4, apply_ll=True):
+def build_random_f2l_state(rng=None, max_unsolved=3, apply_ll=True):
     """Build a complete random F2L-incomplete state.
 
     Args:
         rng: random.Random instance.
-        max_unsolved: Maximum number of pairs to unsolve (1-4).
+        max_unsolved: Maximum number of pairs to unsolve (1-3).
         apply_ll: If True, also apply random OLL + PLL on top.
 
     Returns:
@@ -110,7 +110,8 @@ def build_random_f2l_state(rng=None, max_unsolved=4, apply_ll=True):
         rng = random.Random()
 
     # Choose number of unsolved pairs (weighted distribution)
-    weights = {1: 40, 2: 30, 3: 20, 4: 10}
+    weights = {1: 40, 2: 30, 3: 20}
+    max_unsolved = min(max_unsolved, len(ALL_SLOTS))
     choices = [n for n in range(1, max_unsolved + 1)]
     w = [weights[n] for n in choices]
     n_unsolved = rng.choices(choices, weights=w)[0]
