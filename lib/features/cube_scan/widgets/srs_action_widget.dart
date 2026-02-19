@@ -42,7 +42,7 @@ class SrsActionWidget extends StatelessWidget {
       children: [
         const Icon(Icons.lightbulb_outline, color: Color(0xFFFFC107), size: 32),
         const SizedBox(height: AppSpacing.md),
-        Text('New case discovered!', style: AppTextStyles.h3),
+        const Text('New case discovered!', style: AppTextStyles.h3),
         const SizedBox(height: AppSpacing.sm),
         Text(
           caseName != null
@@ -61,7 +61,7 @@ class SrsActionWidget extends StatelessWidget {
                   foregroundColor: AppColors.textSecondary,
                   side: const BorderSide(color: AppColors.border),
                   padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-                  shape: RoundedRectangleBorder(
+                  shape: const RoundedRectangleBorder(
                     borderRadius: AppSpacing.buttonRadius,
                   ),
                 ),
@@ -77,7 +77,7 @@ class SrsActionWidget extends StatelessWidget {
                   backgroundColor: AppColors.primary,
                   foregroundColor: AppColors.textPrimary,
                   padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-                  shape: RoundedRectangleBorder(
+                  shape: const RoundedRectangleBorder(
                     borderRadius: AppSpacing.buttonRadius,
                   ),
                 ),
@@ -95,7 +95,7 @@ class SrsActionWidget extends StatelessWidget {
       children: [
         const Icon(Icons.psychology, color: AppColors.primary, size: 32),
         const SizedBox(height: AppSpacing.md),
-        Text('How was your recall?', style: AppTextStyles.h3),
+        const Text('How was your recall?', style: AppTextStyles.h3),
         const SizedBox(height: AppSpacing.sm),
         Text(
           caseName != null

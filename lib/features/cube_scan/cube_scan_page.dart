@@ -79,7 +79,7 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
                 horizontal: AppSpacing.lg,
                 vertical: AppSpacing.sm,
               ),
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: Colors.black54,
                 borderRadius: AppSpacing.buttonRadius,
               ),
@@ -291,7 +291,7 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
                   backgroundColor: AppColors.primary,
                   foregroundColor: AppColors.textPrimary,
                   padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-                  shape: RoundedRectangleBorder(
+                  shape: const RoundedRectangleBorder(
                     borderRadius: AppSpacing.buttonRadius,
                   ),
                 ),
@@ -299,7 +299,7 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
               )
             else ...[
               // Solve paths
-              Text(
+              const Text(
                 'SOLVE PATHS',
                 style: AppTextStyles.overline,
               ),
@@ -464,7 +464,7 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
                     vertical: AppSpacing.md,
                     horizontal: AppSpacing.xl,
                   ),
-                  shape: RoundedRectangleBorder(
+                  shape: const RoundedRectangleBorder(
                     borderRadius: AppSpacing.buttonRadius,
                   ),
                 ),
@@ -518,7 +518,7 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
                     vertical: AppSpacing.md,
                     horizontal: AppSpacing.xl,
                   ),
-                  shape: RoundedRectangleBorder(
+                  shape: const RoundedRectangleBorder(
                     borderRadius: AppSpacing.buttonRadius,
                   ),
                 ),
@@ -534,7 +534,7 @@ class _CubeScanPageState extends ConsumerState<CubeScanPage> {
                     vertical: AppSpacing.md,
                     horizontal: AppSpacing.xl,
                   ),
-                  shape: RoundedRectangleBorder(
+                  shape: const RoundedRectangleBorder(
                     borderRadius: AppSpacing.buttonRadius,
                   ),
                 ),

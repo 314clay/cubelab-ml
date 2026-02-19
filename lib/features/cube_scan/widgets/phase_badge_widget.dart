@@ -75,7 +75,7 @@ class PhaseBadgeWidget extends StatelessWidget {
           icon: Icons.layers,
         );
       case 'solved':
-        return _PhaseInfo(
+        return const _PhaseInfo(
           label: 'Solved',
           description: 'Cube is already solved!',
           color: AppColors.success,

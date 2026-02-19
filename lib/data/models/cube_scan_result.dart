@@ -1,5 +1,4 @@
 /// Models for the Cube Scan ML pipeline output.
-
 class SolveStep {
   final String algorithmSet;
   final String caseName;

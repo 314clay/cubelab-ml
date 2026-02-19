@@ -1,5 +1,4 @@
 /// Model for tracking Cube Scan history.
-
 class CubeScanEncounter {
   final String id;
   final String userId;
