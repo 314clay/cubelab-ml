@@ -87,4 +87,4 @@ Add the `camera` package and replace the placeholder:
 - Follow exact patterns from existing codebase
 
 ## Completion Criteria
-All steps 1-6 complete. SRS wiring works, camera captures real photos, ML inference runs (server or on-device), photo overlay highlights stickers, scan history persists to Supabase.
+All steps 1-6 complete. SRS wiring works, camera captures real photos, ML inference runs (server or on-device), photo overlay highlights stickers, scan history persists to Supabase. `flutter test` passes with all tests green.
