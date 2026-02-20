@@ -25,7 +25,7 @@ class TestSolvedCubeLookup:
     def test_solved_visible_stickers(self):
         cube = Cube()
         visible = cube.get_visible_stickers()
-        assert visible == ['W']*9 + ['R']*3 + ['B']*3
+        assert visible == ['W']*9 + ['G']*3 + ['R']*3
 
     def test_solved_in_lookup(self, resolver):
         cube = Cube()

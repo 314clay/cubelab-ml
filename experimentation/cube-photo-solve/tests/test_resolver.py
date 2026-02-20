@@ -61,11 +61,11 @@ class TestCube:
         # Top face should be all white
         assert visible[0:9] == ['W'] * 9
 
-        # Front top row should be red (front face color)
-        assert visible[9:12] == ['R'] * 3
+        # Front top row should be green (front face color)
+        assert visible[9:12] == ['G'] * 3
 
-        # Right top row should be blue (right face color)
-        assert visible[12:15] == ['B'] * 3
+        # Right top row should be red (right face color)
+        assert visible[12:15] == ['R'] * 3
 
     def test_apply_move_R(self):
         """Test R move."""
@@ -176,7 +176,7 @@ class TestStateResolver:
     def test_find_closest_matches(self, resolver):
         """Test finding closest matches."""
         # Create a random sticker pattern
-        test_stickers = ['W'] * 9 + ['R'] * 3 + ['B'] * 3
+        test_stickers = ['W'] * 9 + ['G'] * 3 + ['R'] * 3
 
         closest = resolver.find_closest_matches(test_stickers, n=5)
 

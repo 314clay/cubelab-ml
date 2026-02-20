@@ -143,7 +143,7 @@ class TestSpecificMovePermutations:
     """
     Verify specific sticker positions after each move.
     Uses standard Rubik's cube convention:
-    - U=White, D=Yellow, F=Red, B=Orange, L=Green, R=Blue
+    - U=White, D=Yellow, F=Green, B=Blue, L=Orange, R=Red
     - Face indices:
       0 1 2
       3 4 5
@@ -155,9 +155,9 @@ class TestSpecificMovePermutations:
         cube = Cube()
         cube.apply_move('R')
         # R moves F[2,5,8] -> U[2,5,8]
-        assert cube.faces['U'][2] == 'R'  # was White, now Red (from Front)
-        assert cube.faces['U'][5] == 'R'
-        assert cube.faces['U'][8] == 'R'
+        assert cube.faces['U'][2] == 'G'  # was White, now Green (from Front)
+        assert cube.faces['U'][5] == 'G'
+        assert cube.faces['U'][8] == 'G'
         # Rest of U face unchanged
         assert cube.faces['U'][0] == 'W'
         assert cube.faces['U'][1] == 'W'
@@ -171,7 +171,7 @@ class TestSpecificMovePermutations:
         cube = Cube()
         cube.apply_move('R')
         # R moves D[2,5,8] -> F[2,5,8]
-        assert cube.faces['F'][2] == 'Y'  # was Red, now Yellow (from Down)
+        assert cube.faces['F'][2] == 'Y'  # was Green, now Yellow (from Down)
         assert cube.faces['F'][5] == 'Y'
         assert cube.faces['F'][8] == 'Y'
 
@@ -180,16 +180,16 @@ class TestSpecificMovePermutations:
         cube = Cube()
         cube.apply_move('R')
         # R moves B[6,3,0] -> D[2,5,8]
-        assert cube.faces['D'][2] == 'O'  # was Yellow, now Orange (from Back)
-        assert cube.faces['D'][5] == 'O'
-        assert cube.faces['D'][8] == 'O'
+        assert cube.faces['D'][2] == 'B'  # was Yellow, now Blue (from Back)
+        assert cube.faces['D'][5] == 'B'
+        assert cube.faces['D'][8] == 'B'
 
     def test_R_move_B_face(self):
         """After R, B face positions 0,3,6 should have U face colors (reversed)."""
         cube = Cube()
         cube.apply_move('R')
         # R moves U[2,5,8] -> B[6,3,0]
-        assert cube.faces['B'][6] == 'W'  # was Orange, now White (from Up)
+        assert cube.faces['B'][6] == 'W'  # was Blue, now White (from Up)
         assert cube.faces['B'][3] == 'W'
         assert cube.faces['B'][0] == 'W'
 
@@ -197,7 +197,7 @@ class TestSpecificMovePermutations:
         """After U, the top rows of F,R,B,L cycle: F->L, R->F, B->R, L->B."""
         cube = Cube()
         cube.apply_move('U')
-        # U moves F[0,1,2] -> R[0,1,2] (Red goes to Right)
+        # U moves F[0,1,2] -> R[0,1,2] (Green goes to Right)
         # Wait, standard U move: F->L is wrong.
         # Standard: F top row -> R top row is wrong too.
         # Let me be precise:
@@ -206,33 +206,33 @@ class TestSpecificMovePermutations:
         # Actually: F[0,1,2] stays, R[0,1,2] -> F[0,1,2]
         # Standard U: F <- R <- B <- L <- F
         # So after U: F top row has what was R top row
-        assert cube.faces['F'][0] == 'B'  # was Red, now Blue (from Right)
-        assert cube.faces['F'][1] == 'B'
-        assert cube.faces['F'][2] == 'B'
+        assert cube.faces['F'][0] == 'R'  # was Green, now Red (from Right)
+        assert cube.faces['F'][1] == 'R'
+        assert cube.faces['F'][2] == 'R'
 
     def test_U_move_right_face(self):
         """After U, R top row has what was B top row."""
         cube = Cube()
         cube.apply_move('U')
-        assert cube.faces['R'][0] == 'O'  # was Blue, now Orange (from Back)
-        assert cube.faces['R'][1] == 'O'
-        assert cube.faces['R'][2] == 'O'
+        assert cube.faces['R'][0] == 'B'  # was Red, now Blue (from Back)
+        assert cube.faces['R'][1] == 'B'
+        assert cube.faces['R'][2] == 'B'
 
     def test_U_move_back_face(self):
         """After U, B top row has what was L top row."""
         cube = Cube()
         cube.apply_move('U')
-        assert cube.faces['B'][0] == 'G'  # was Orange, now Green (from Left)
-        assert cube.faces['B'][1] == 'G'
-        assert cube.faces['B'][2] == 'G'
+        assert cube.faces['B'][0] == 'O'  # was Blue, now Orange (from Left)
+        assert cube.faces['B'][1] == 'O'
+        assert cube.faces['B'][2] == 'O'
 
     def test_U_move_left_face(self):
         """After U, L top row has what was F top row."""
         cube = Cube()
         cube.apply_move('U')
-        assert cube.faces['L'][0] == 'R'  # was Green, now Red (from Front)
-        assert cube.faces['L'][1] == 'R'
-        assert cube.faces['L'][2] == 'R'
+        assert cube.faces['L'][0] == 'G'  # was Orange, now Green (from Front)
+        assert cube.faces['L'][1] == 'G'
+        assert cube.faces['L'][2] == 'G'
 
     def test_F_move_U_bottom_row(self):
         """After F, U bottom row (6,7,8) gets L right column (8,5,2) reversed."""
@@ -240,9 +240,9 @@ class TestSpecificMovePermutations:
         cube.apply_move('F')
         # F clockwise (looking at F face):
         # U[6,7,8] <- L[8,5,2]
-        assert cube.faces['U'][6] == 'G'  # was White, now Green (from Left col)
-        assert cube.faces['U'][7] == 'G'
-        assert cube.faces['U'][8] == 'G'
+        assert cube.faces['U'][6] == 'O'  # was White, now Orange (from Left col)
+        assert cube.faces['U'][7] == 'O'
+        assert cube.faces['U'][8] == 'O'
 
     def test_R_face_rotation(self):
         """After R, the R face itself rotates clockwise."""
@@ -349,32 +349,32 @@ class TestSliceMoves:
         assert cube.get_state_string() == original
 
     def test_S_specific_permutation(self):
-        """After S on solved cube, U[4] should get L[4]'s color (Green).
+        """After S on solved cube, U[4] should get L[4]'s color (Orange).
         S follows F direction: U←L(rev), L←D, D←R(rev), R←U."""
         cube = Cube()
         cube.apply_move('S')
         # U middle row gets L middle column (reversed): L[7,4,1] -> U[3,4,5]
-        assert cube.faces['U'][4] == 'G', f"U[4] should be Green, got {cube.faces['U'][4]}"
+        assert cube.faces['U'][4] == 'O', f"U[4] should be Orange, got {cube.faces['U'][4]}"
         # R middle column gets old U values (White)
         assert cube.faces['R'][4] == 'W', f"R[4] should be White, got {cube.faces['R'][4]}"
         # D middle row gets R middle column (reversed)
-        assert cube.faces['D'][4] == 'B', f"D[4] should be Blue, got {cube.faces['D'][4]}"
+        assert cube.faces['D'][4] == 'R', f"D[4] should be Red, got {cube.faces['D'][4]}"
         # L middle column gets D middle row
         assert cube.faces['L'][4] == 'Y', f"L[4] should be Yellow, got {cube.faces['L'][4]}"
 
     def test_E_specific_permutation(self):
         """After E on solved cube, E follows D direction: F←L←B←R←F.
-        So F[4] gets L[4]'s color (Green)."""
+        So F[4] gets L[4]'s color (Orange)."""
         cube = Cube()
         cube.apply_move('E')
-        # F gets L's values (Green)
-        assert cube.faces['F'][4] == 'G', f"F[4] should be Green, got {cube.faces['F'][4]}"
-        # L gets B's values (Orange)
-        assert cube.faces['L'][4] == 'O', f"L[4] should be Orange, got {cube.faces['L'][4]}"
-        # B gets R's values (Blue)
-        assert cube.faces['B'][4] == 'B', f"B[4] should be Blue, got {cube.faces['B'][4]}"
-        # R gets F's values (Red)
-        assert cube.faces['R'][4] == 'R', f"R[4] should be Red, got {cube.faces['R'][4]}"
+        # F gets L's values (Orange)
+        assert cube.faces['F'][4] == 'O', f"F[4] should be Orange, got {cube.faces['F'][4]}"
+        # L gets B's values (Blue)
+        assert cube.faces['L'][4] == 'B', f"L[4] should be Blue, got {cube.faces['L'][4]}"
+        # B gets R's values (Red)
+        assert cube.faces['B'][4] == 'R', f"B[4] should be Red, got {cube.faces['B'][4]}"
+        # R gets F's values (Green)
+        assert cube.faces['R'][4] == 'G', f"R[4] should be Green, got {cube.faces['R'][4]}"
 
     def test_S_does_not_affect_F_or_B(self):
         """S should not change F or B faces."""
@@ -565,7 +565,7 @@ class TestRotations:
         # E' is opposite of E. E: F←L. E': F←R.
         # So after y: F middle gets R's values.
         cube.apply_move('y')
-        # U direction: F←R, so F[4] gets R[4]'s old value (Blue)
+        # U direction: F←R, so F[4] gets R[4]'s old value (Red)
         # Actually let's trace: y = U + E' + D'
         # U: F[0:3] ← R[0:3]
         # E': opposite of E (F←L←B←R←F), so E' is F←R←B←L←F
@@ -573,17 +573,17 @@ class TestRotations:
         # D': opposite of D (F←L←B←R←F), so D' is F←R←B←L←F
         #   i.e. F[6:9] ← R[6:9]
         # All rows of F get R's values!
-        assert cube.faces['F'][4] == 'B', f"F[4] should be Blue after y, got {cube.faces['F'][4]}"
+        assert cube.faces['F'][4] == 'R', f"F[4] should be Red after y, got {cube.faces['F'][4]}"
 
     def test_z_moves_middle_layer(self):
         """z rotation must move the S layer."""
         cube = Cube()
         cube.apply_move('z')
         # z = F + S + B'. After z on solved cube, the entire cube rotates.
-        # All of U should now have L's color (Green) — z rotates U←L
+        # All of U should now have L's color (Orange) — z rotates U←L
         # Since F: U←L(rev), S: U←L(rev) on middle, B': U←L(rev) on top row
         # Actually for z: U face gets what was at L face
-        assert cube.faces['U'][4] == 'G', f"U[4] should be Green after z, got {cube.faces['U'][4]}"
+        assert cube.faces['U'][4] == 'O', f"U[4] should be Orange after z, got {cube.faces['U'][4]}"
 
 
 class TestSolvedCubeState:
@@ -593,18 +593,18 @@ class TestSolvedCubeState:
         cube = Cube()
         assert cube.faces['U'] == ['W'] * 9  # White top
         assert cube.faces['D'] == ['Y'] * 9  # Yellow bottom
-        assert cube.faces['F'] == ['R'] * 9  # Red front
-        assert cube.faces['B'] == ['O'] * 9  # Orange back
-        assert cube.faces['L'] == ['G'] * 9  # Green left
-        assert cube.faces['R'] == ['B'] * 9  # Blue right
+        assert cube.faces['F'] == ['G'] * 9  # Green front
+        assert cube.faces['B'] == ['B'] * 9  # Blue back
+        assert cube.faces['L'] == ['O'] * 9  # Orange left
+        assert cube.faces['R'] == ['R'] * 9  # Red right
 
     def test_visible_stickers_solved(self):
         cube = Cube()
         visible = cube.get_visible_stickers()
         assert len(visible) == 15
         assert visible[0:9] == ['W'] * 9   # Top face
-        assert visible[9:12] == ['R'] * 3   # Front top row
-        assert visible[12:15] == ['B'] * 3  # Right top row
+        assert visible[9:12] == ['G'] * 3   # Front top row
+        assert visible[12:15] == ['R'] * 3  # Right top row
 
 
 class TestMoveDoesNotAffectWrongFaces:
