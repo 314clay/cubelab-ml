@@ -24,10 +24,10 @@ class Cube:
         self.faces = {
             'U': ['W'] * 9,  # White top
             'D': ['Y'] * 9,  # Yellow bottom
-            'F': ['R'] * 9,  # Red front
-            'B': ['O'] * 9,  # Orange back
-            'L': ['G'] * 9,  # Green left
-            'R': ['B'] * 9,  # Blue right
+            'F': ['G'] * 9,  # Green front
+            'B': ['B'] * 9,  # Blue back
+            'L': ['O'] * 9,  # Orange left
+            'R': ['R'] * 9,  # Red right
         }
 
     def copy(self):
@@ -66,7 +66,7 @@ class Cube:
         return visible
 
     # Solved colors for reference
-    SOLVED_COLORS = {'U': 'W', 'D': 'Y', 'F': 'R', 'B': 'O', 'L': 'G', 'R': 'B'}
+    SOLVED_COLORS = {'U': 'W', 'D': 'Y', 'F': 'G', 'B': 'B', 'L': 'O', 'R': 'R'}
 
     def is_solved(self) -> bool:
         """Check if the cube is fully solved."""

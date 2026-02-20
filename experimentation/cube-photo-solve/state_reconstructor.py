@@ -18,37 +18,37 @@ from state_resolver import Cube
 
 # The 4 U-layer corner pieces (by color set)
 U_CORNERS = [
-    frozenset({'W', 'R', 'B'}),  # Home: UFR
-    frozenset({'W', 'R', 'G'}),  # Home: UFL
-    frozenset({'W', 'O', 'B'}),  # Home: UBR
-    frozenset({'W', 'O', 'G'}),  # Home: UBL
+    frozenset({'W', 'G', 'R'}),  # Home: UFR
+    frozenset({'W', 'G', 'O'}),  # Home: UFL
+    frozenset({'W', 'B', 'R'}),  # Home: UBR
+    frozenset({'W', 'B', 'O'}),  # Home: UBL
 ]
 
 # The 4 U-layer edge pieces
 U_EDGES = [
-    frozenset({'W', 'R'}),  # Home: UF
-    frozenset({'W', 'B'}),  # Home: UR
-    frozenset({'W', 'O'}),  # Home: UB
-    frozenset({'W', 'G'}),  # Home: UL
+    frozenset({'W', 'G'}),  # Home: UF
+    frozenset({'W', 'R'}),  # Home: UR
+    frozenset({'W', 'B'}),  # Home: UB
+    frozenset({'W', 'O'}),  # Home: UL
 ]
 
 # Home position indices for parity calculation
 CORNER_HOME = {
-    frozenset({'W', 'R', 'B'}): 0,
-    frozenset({'W', 'R', 'G'}): 1,
-    frozenset({'W', 'O', 'B'}): 2,
-    frozenset({'W', 'O', 'G'}): 3,
+    frozenset({'W', 'G', 'R'}): 0,
+    frozenset({'W', 'G', 'O'}): 1,
+    frozenset({'W', 'B', 'R'}): 2,
+    frozenset({'W', 'B', 'O'}): 3,
 }
 
 EDGE_HOME = {
-    frozenset({'W', 'R'}): 0,
-    frozenset({'W', 'B'}): 1,
-    frozenset({'W', 'O'}): 2,
-    frozenset({'W', 'G'}): 3,
+    frozenset({'W', 'G'}): 0,
+    frozenset({'W', 'R'}): 1,
+    frozenset({'W', 'B'}): 2,
+    frozenset({'W', 'O'}): 3,
 }
 
 # Kociemba color mapping (our colors -> kociemba face letters)
-COLOR_TO_KOCIEMBA = {'W': 'U', 'Y': 'D', 'R': 'F', 'O': 'B', 'G': 'L', 'B': 'R'}
+COLOR_TO_KOCIEMBA = {'W': 'U', 'Y': 'D', 'G': 'F', 'B': 'B', 'O': 'L', 'R': 'R'}
 
 
 class StateReconstructor:
