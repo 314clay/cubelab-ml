@@ -28,6 +28,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 EXPERIMENT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 CUBE_SOLVE_DIR = os.path.join(EXPERIMENT_DIR, "cube-photo-solve")
 sys.path.insert(0, CUBE_SOLVE_DIR)
+sys.path.insert(0, SCRIPT_DIR)
+from cube_design_config import random_config
 
 render_globals = {
     "__name__": "render_known_states",
@@ -62,9 +64,9 @@ DEFAULT_OUTPUT_DIR = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "training
 CUBE_HALF = 1.5  # Cube body is size=3.0, corners at +/-1.5
 
 
-def get_cube_corners():
+def get_cube_corners(cube_half=1.5):
     """Get 8 cube corners in world coordinates."""
-    h = CUBE_HALF
+    h = cube_half
     return [
         (h, h, h), (-h, h, h), (-h, -h, h), (h, -h, h),
         (h, h, -h), (-h, h, -h), (-h, -h, -h), (h, -h, -h),
@@ -94,7 +96,7 @@ def _vec_norm(a):
     return (a[0] / length, a[1] / length, a[2] / length)
 
 
-def check_all_corners_in_frame(cam_pos, look_at, focal_mm, img_size, margin=30):
+def check_all_corners_in_frame(cam_pos, look_at, focal_mm, img_size, margin=30, cube_half=1.5):
     """
     Check if all 8 cube corners project within the image frame.
     Uses a pinhole camera model ported from the exploration notebook.
@@ -112,7 +114,7 @@ def check_all_corners_in_frame(cam_pos, look_at, focal_mm, img_size, margin=30):
     sensor_width_mm = 36.0
     f_px = (focal_mm / sensor_width_mm) * img_size
 
-    for corner in get_cube_corners():
+    for corner in get_cube_corners(cube_half):
         d = _vec_sub(corner, cam_pos)
         cam_x = _vec_dot(d, right)
         cam_y = _vec_dot(d, up)
@@ -237,7 +239,7 @@ LIGHTING_PRESETS = {
 # Randomized camera with TRACK_TO constraint
 # ---------------------------------------------------------------------------
 
-def setup_randomized_camera(rng, img_size):
+def setup_randomized_camera(rng, img_size, cube_half=1.5):
     """
     Create a camera with randomized spherical position aimed via TRACK_TO
     constraint at a randomly offset look-at point.
@@ -270,7 +272,7 @@ def setup_randomized_camera(rng, img_size):
         cam_pos = (cam_x, cam_y, cam_z)
         look_at = (look_x, look_y, look_z)
 
-        if not check_all_corners_in_frame(cam_pos, look_at, focal_mm, img_size):
+        if not check_all_corners_in_frame(cam_pos, look_at, focal_mm, img_size, cube_half=cube_half):
             continue
 
         # Valid config found — create Blender objects
@@ -423,10 +425,18 @@ def main():
         # Clear scene and create cube geometry
         clear_scene()
         cleanup_hdri_images()
+
+        # Randomize cube design per render
+        design_config = random_config(rng, style='stickered')
+        render_globals['CUBE_DESIGN_CONFIG'] = design_config
+
+        # Compute cube extents for rejection sampling
+        cube_half = (design_config.body_size / 2.0) * design_config.overall_scale
+
         create_cube_with_state(cube)
 
         # Randomized camera (with rejection sampling)
-        cam_params = setup_randomized_camera(rng, args.resolution)
+        cam_params = setup_randomized_camera(rng, args.resolution, cube_half=cube_half)
         if cam_params is None:
             print("  SKIP: no valid camera config found in 100 attempts")
             skipped += 1
@@ -475,6 +485,7 @@ def main():
             "full_state": {k: list(v) for k, v in cube.faces.items()},
             "camera": cam_params,
             "lighting_preset": preset_name,
+            "cube_design": design_config.to_dict(),
         }
         if hdri_params:
             label['hdri'] = hdri_params

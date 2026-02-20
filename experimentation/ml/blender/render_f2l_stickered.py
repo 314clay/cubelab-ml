@@ -30,6 +30,7 @@ EXPERIMENT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 CUBE_SOLVE_DIR = os.path.join(EXPERIMENT_DIR, "cube-photo-solve")
 sys.path.insert(0, CUBE_SOLVE_DIR)
 sys.path.insert(0, SCRIPT_DIR)
+from cube_design_config import random_config
 
 render_globals = {
     "__name__": "render_known_states",
@@ -64,8 +65,8 @@ DEFAULT_OUTPUT_DIR = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "f2l_stic
 CUBE_HALF = 1.5
 
 
-def get_cube_corners():
-    h = CUBE_HALF
+def get_cube_corners(cube_half=1.5):
+    h = cube_half
     return [
         (h, h, h), (-h, h, h), (-h, -h, h), (h, -h, h),
         (h, h, -h), (-h, h, -h), (-h, -h, -h), (h, -h, -h),
@@ -95,7 +96,7 @@ def _vec_norm(a):
     return (a[0] / length, a[1] / length, a[2] / length)
 
 
-def check_all_corners_in_frame(cam_pos, look_at, focal_mm, img_size, margin=30):
+def check_all_corners_in_frame(cam_pos, look_at, focal_mm, img_size, margin=30, cube_half=1.5):
     forward = _vec_norm(_vec_sub(look_at, cam_pos))
     if _vec_dot(forward, forward) < 0.5:
         return False
@@ -109,7 +110,7 @@ def check_all_corners_in_frame(cam_pos, look_at, focal_mm, img_size, margin=30):
     sensor_width_mm = 36.0
     f_px = (focal_mm / sensor_width_mm) * img_size
 
-    for corner in get_cube_corners():
+    for corner in get_cube_corners(cube_half):
         d = _vec_sub(corner, cam_pos)
         cam_x = _vec_dot(d, right)
         cam_y = _vec_dot(d, up)
@@ -229,7 +230,7 @@ LIGHTING_PRESETS = {
 # Randomized camera (stickered convention: negative azimuth)
 # ---------------------------------------------------------------------------
 
-def setup_randomized_camera(rng, img_size):
+def setup_randomized_camera(rng, img_size, cube_half=1.5):
     max_attempts = 100
 
     for attempt in range(max_attempts):
@@ -249,7 +250,7 @@ def setup_randomized_camera(rng, img_size):
         cam_pos = (cam_x, cam_y, cam_z)
         look_at = (look_x, look_y, look_z)
 
-        if not check_all_corners_in_frame(cam_pos, look_at, focal_mm, img_size):
+        if not check_all_corners_in_frame(cam_pos, look_at, focal_mm, img_size, cube_half=cube_half):
             continue
 
         bpy.ops.object.camera_add(location=cam_pos)
@@ -358,10 +359,18 @@ def main():
         # Clear scene and create stickered cube
         clear_scene()
         cleanup_hdri_images()
+
+        # Randomize cube design per render
+        design_config = random_config(rng, style='stickered')
+        render_globals['CUBE_DESIGN_CONFIG'] = design_config
+
+        # Compute cube extents for rejection sampling
+        cube_half = (design_config.body_size / 2.0) * design_config.overall_scale
+
         create_cube_with_state(cube)
 
         # Randomized camera
-        cam_params = setup_randomized_camera(rng, args.resolution)
+        cam_params = setup_randomized_camera(rng, args.resolution, cube_half=cube_half)
         if cam_params is None:
             print("  SKIP: no valid camera config")
             skipped += 1
@@ -406,6 +415,7 @@ def main():
             "full_state": {k: list(v) for k, v in cube.faces.items()},
             "camera": cam_params,
             "lighting_preset": preset_name,
+            "cube_design": design_config.to_dict(),
         }
         if hdri_params:
             label['hdri'] = hdri_params

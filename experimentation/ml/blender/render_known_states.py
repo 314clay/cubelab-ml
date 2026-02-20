@@ -17,8 +17,20 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 EXPERIMENT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 CUBE_SOLVE_DIR = os.path.join(EXPERIMENT_DIR, "cube-photo-solve")
 sys.path.insert(0, CUBE_SOLVE_DIR)
+sys.path.insert(0, SCRIPT_DIR)
 
 from state_resolver import Cube
+from cube_design_config import CubeDesignConfig, default_stickered_config
+
+# Module-level config — overridden by training scripts via exec() globals
+CUBE_DESIGN_CONFIG = None
+
+def _get_config():
+    global CUBE_DESIGN_CONFIG
+    if CUBE_DESIGN_CONFIG is None:
+        CUBE_DESIGN_CONFIG = default_stickered_config()
+    return CUBE_DESIGN_CONFIG
+
 from algorithms import OLL_CASES, PLL_CASES, COLL_CASES, ZBLL_CASES, OLLCP_CASES
 
 OUTPUT_DIR = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "verified_renders")
@@ -59,20 +71,36 @@ def clear_scene():
             bpy.data.materials.remove(block)
 
 
-def create_material(name, color_rgb):
-    """Create a simple diffuse material with the given color."""
+def create_material(name, color_rgb, config=None):
+    """Create a material with the given color, using config for surface properties."""
+    if config is None:
+        config = _get_config()
     mat = bpy.data.materials.new(name=name)
     mat.use_nodes = True
     bsdf = mat.node_tree.nodes["Principled BSDF"]
     bsdf.inputs['Base Color'].default_value = (*color_rgb, 1.0)
-    bsdf.inputs['Roughness'].default_value = 0.5
-    bsdf.inputs['Metallic'].default_value = 0.0
-    # Make it look more like plastic
-    bsdf.inputs['Specular IOR Level'].default_value = 0.5
+    bsdf.inputs['Roughness'].default_value = config.roughness
+    bsdf.inputs['Metallic'].default_value = config.metallic
+    bsdf.inputs['Specular IOR Level'].default_value = config.specular_ior_level
+    bsdf.inputs['IOR'].default_value = config.ior
+    # SSS if configured
+    if config.sss_weight_base > 0:
+        luminance = 0.299 * color_rgb[0] + 0.587 * color_rgb[1] + 0.114 * color_rgb[2]
+        sss_weight = config.sss_weight_base + config.sss_weight_luminance_scale * luminance
+        bsdf.inputs['Subsurface Weight'].default_value = sss_weight
+        bsdf.inputs['Subsurface Radius'].default_value = (
+            color_rgb[0] * 0.5 + 0.1,
+            color_rgb[1] * 0.5 + 0.1,
+            color_rgb[2] * 0.5 + 0.1,
+        )
+    # Clearcoat if configured
+    if config.coat_weight > 0:
+        bsdf.inputs['Coat Weight'].default_value = config.coat_weight
+        bsdf.inputs['Coat Roughness'].default_value = config.coat_roughness
     return mat
 
 
-def get_sticker_position(face, row, col):
+def get_sticker_position(face, row, col, config=None):
     """
     Calculate the 3D position for a sticker on a given face.
 
@@ -84,25 +112,30 @@ def get_sticker_position(face, row, col):
     Row 0 = top of face, Row 2 = bottom of face
     Col 0 = left of face, Col 2 = right of face
     """
-    config = FACE_CONFIG[face]
-    nx, ny, nz = config['normal']
-    cx, cy, cz = config['center_offset']
-    ux, uy, uz = config['up']
+    if config is None:
+        config = _get_config()
+    fc = FACE_CONFIG[face]
+    nx, ny, nz = fc['normal']
+    ux, uy, uz = fc['up']
 
-    # Calculate right vector (cross product of up and normal)
+    # Compute center offset from scaled body surface + elevation
+    scale = config.overall_scale
+    half_body = (config.body_size / 2.0) * scale + config.sticker_elevation
+    cx = nx * half_body
+    cy = ny * half_body
+    cz = nz * half_body
+
+    # Right vector (cross product of up and normal)
     rx = uy * nz - uz * ny
     ry = uz * nx - ux * nz
     rz = ux * ny - uy * nx
 
-    # Sticker offsets from center (-0.9, 0, +0.9 for 3x3 grid)
-    # Row goes along -up direction (top=0 means high up value)
-    col_offset = (col - 1) * 0.95
-    row_offset = -(row - 1) * 0.95  # Negative because row 0 is top
+    col_offset = (col - 1) * config.sticker_grid_spacing * scale
+    row_offset = -(row - 1) * config.sticker_grid_spacing * scale
 
     x = cx + col_offset * rx + row_offset * ux
     y = cy + col_offset * ry + row_offset * uy
     z = cz + col_offset * rz + row_offset * uz
-
     return (x, y, z)
 
 
@@ -119,42 +152,47 @@ def get_sticker_rotation(face):
     return rotations[face]
 
 
-def create_cube_with_state(cube_state):
+def create_cube_with_state(cube_state, config=None):
     """
     Create a Rubik's cube mesh in Blender with the given state.
 
     Args:
         cube_state: Cube object with the desired face colors
+        config: CubeDesignConfig (uses default stickered config if None)
     """
-    # Create the black cube body
-    bpy.ops.mesh.primitive_cube_add(size=3.0, location=(0, 0, 0))
+    if config is None:
+        config = _get_config()
+
+    # Create body cube (bake overall_scale into mesh size to avoid
+    # transform-space vs mesh-space mismatch with sticker positions)
+    scaled_body = config.body_size * config.overall_scale
+    bpy.ops.mesh.primitive_cube_add(size=scaled_body, location=(0, 0, 0))
     body = bpy.context.active_object
     body.name = "CubeBody"
 
-    body_mat = create_material("BlackBody", (0.02, 0.02, 0.02))
+    body_mat = create_material("BlackBody", config.body_color, config)
     body.data.materials.append(body_mat)
 
-    # Create individual sticker planes for each face position
+    # Create sticker planes
     for face_name, face_colors in cube_state.faces.items():
         for idx, color in enumerate(face_colors):
             row = idx // 3
             col = idx % 3
 
-            pos = get_sticker_position(face_name, row, col)
+            pos = get_sticker_position(face_name, row, col, config)
             rot = get_sticker_rotation(face_name)
 
-            # Create a small plane for the sticker
             bpy.ops.mesh.primitive_plane_add(
-                size=0.85,
+                size=config.sticker_size * config.overall_scale,
                 location=pos,
                 rotation=rot
             )
             sticker = bpy.context.active_object
             sticker.name = f"Sticker_{face_name}_{idx}"
 
-            # Apply color material
+            color_rgb = config.colors[color]
             mat_name = f"Mat_{face_name}_{idx}_{color}"
-            mat = create_material(mat_name, COLOR_MAP[color])
+            mat = create_material(mat_name, color_rgb, config)
             sticker.data.materials.append(mat)
 
 

@@ -33,6 +33,8 @@ CUBE_SOLVE_DIR = os.path.join(EXPERIMENT_DIR, "cube-photo-solve")
 sys.path.insert(0, CUBE_SOLVE_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
+from cube_design_config import random_config
+
 # Import stickerless renderer via exec() (same pattern as render_training_data.py)
 stickerless_globals = {
     "__name__": "render_stickerless",
@@ -68,9 +70,9 @@ DEFAULT_OUTPUT_DIR = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "stickerl
 CUBE_HALF = 0.92  # Stickerless cube outer extent
 
 
-def get_cube_corners():
+def get_cube_corners(cube_half=0.92):
     """Get 8 cube corners in world coordinates."""
-    h = CUBE_HALF
+    h = cube_half
     return [
         (h, h, h), (-h, h, h), (-h, -h, h), (h, -h, h),
         (h, h, -h), (-h, h, -h), (-h, -h, -h), (h, -h, -h),
@@ -100,7 +102,7 @@ def _vec_norm(a):
     return (a[0] / length, a[1] / length, a[2] / length)
 
 
-def check_all_corners_in_frame(cam_pos, look_at, focal_mm, img_size, margin=30):
+def check_all_corners_in_frame(cam_pos, look_at, focal_mm, img_size, margin=30, cube_half=0.92):
     """Check if all 8 cube corners project within the image frame."""
     forward = _vec_norm(_vec_sub(look_at, cam_pos))
     if _vec_dot(forward, forward) < 0.5:
@@ -115,7 +117,7 @@ def check_all_corners_in_frame(cam_pos, look_at, focal_mm, img_size, margin=30):
     sensor_width_mm = 36.0
     f_px = (focal_mm / sensor_width_mm) * img_size
 
-    for corner in get_cube_corners():
+    for corner in get_cube_corners(cube_half):
         d = _vec_sub(corner, cam_pos)
         cam_x = _vec_dot(d, right)
         cam_y = _vec_dot(d, up)
@@ -235,7 +237,7 @@ LIGHTING_PRESETS = {
 # Randomized camera (stickerless convention: positive azimuth, negated Y)
 # ---------------------------------------------------------------------------
 
-def setup_randomized_camera(rng, img_size):
+def setup_randomized_camera(rng, img_size, cube_half=0.92):
     """Create a randomized camera for stickerless cube viewing U/F/R faces."""
     max_attempts = 100
 
@@ -259,7 +261,7 @@ def setup_randomized_camera(rng, img_size):
         cam_pos = (cam_x, cam_y, cam_z)
         look_at = (look_x, look_y, look_z)
 
-        if not check_all_corners_in_frame(cam_pos, look_at, focal_mm, img_size):
+        if not check_all_corners_in_frame(cam_pos, look_at, focal_mm, img_size, cube_half=cube_half):
             continue
 
         # Valid config — create Blender camera
@@ -449,11 +451,19 @@ def main():
         clear_scene()
         cleanup_hdri_images()
 
+        # Randomize cube design per render
+        design_config = random_config(rng, style='stickerless')
+        stickerless_globals['CUBE_DESIGN_CONFIG'] = design_config
+
+        # Compute cube extents for rejection sampling
+        spacing = design_config.cubie_size + design_config.gap
+        cube_half = (spacing + design_config.cubie_size / 2.0) * design_config.overall_scale
+
         # Build stickerless geometry
         cubies, mechanism = build_stickerless_cube(cube)
 
         # Randomized camera
-        cam_params = setup_randomized_camera(rng, args.resolution)
+        cam_params = setup_randomized_camera(rng, args.resolution, cube_half=cube_half)
         if cam_params is None:
             print("  SKIP: no valid camera config")
             skipped += 1
@@ -501,6 +511,7 @@ def main():
             "full_state": {k: list(v) for k, v in cube.faces.items()},
             "camera": cam_params,
             "lighting_preset": preset_name,
+            "cube_design": design_config.to_dict(),
         }
         if hdri_params:
             label['hdri'] = hdri_params
